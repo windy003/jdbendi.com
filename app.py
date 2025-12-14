@@ -364,12 +364,4 @@ if __name__ == '__main__':
     # 初始化数据库
     init_db()
 
-    # 运行应用
-    print("=" * 50)
-    print("服务器启动成功！")
-    print("前台页面: http://127.0.0.1:5000/")
-    print("后台管理: http://127.0.0.1:5000/admin")
-    print("默认账号: admin")
-    print("默认密码: 123456")
-    print("=" * 50)
     app.run(debug=True, host='0.0.0.0', port=5002)
