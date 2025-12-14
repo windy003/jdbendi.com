@@ -28,8 +28,8 @@ CORS(app, resources={
 
 # ========== 配置区域（从环境变量读取，保护敏感信息） ==========
 # 账号密码（使用哈希加密存储）
-ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
-admin_password = os.getenv('ADMIN_PASSWORD', '123456')  # 默认仅用于开发
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME')
+admin_password = os.getenv('ADMIN_PASSWORD')  # 默认仅用于开发
 ADMIN_PASSWORD_HASH = generate_password_hash(admin_password)
 
 # 站长联系方式
