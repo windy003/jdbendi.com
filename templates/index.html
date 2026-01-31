@@ -75,22 +75,6 @@
             color: #ffffff;
         }
 
-        .admin-contact {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px 15px;
-            border-radius: 8px;
-            text-align: center;
-            font-size: 14px;
-            margin-top: 10px;
-        }
-
-        .admin-contact strong {
-            font-size: 16px;
-            display: block;
-            margin-bottom: 5px;
-        }
-
         .filter-section {
             background: white;
             padding: 15px;
@@ -202,6 +186,22 @@
             font-size: 16px;
         }
 
+        .footer {
+            background: white;
+            padding: 20px 15px;
+            text-align: center;
+            margin-top: 20px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+
+        .footer-contact {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
         .post-images {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -239,9 +239,6 @@
 <body>
     <header>
         <h1><span>📢 建德本地.com<br>建德本地供求信息发布平台</span></h1>
-        <div class="admin-contact">
-            有问题或建议,请联系站长:周秋良,手机:15868404601微信同号
-        </div>
         <div id="authNav" style="text-align: center; margin-top: 10px; font-size: 14px;">
             <a href="/register" style="color: #667eea; text-decoration: none; margin: 0 10px; font-weight: 600;">注册</a> |
             <a href="/login" style="color: #667eea; text-decoration: none; margin: 0 10px; font-weight: 600;">登录</a>
@@ -264,6 +261,12 @@
 
         <div class="posts-section" id="postsSection"></div>
     </div>
+
+    <footer class="footer">
+        <div class="footer-contact">
+            有问题或建议,请联系站长:周秋良,手机:15868404601微信同号
+        </div>
+    </footer>
 
     <script>
         let posts = [];
