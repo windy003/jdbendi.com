@@ -308,6 +308,17 @@
             color: #999;
             font-size: 14px;
         }
+
+        .post-location {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+            background: #9C27B0;
+            margin: 6px 0;
+        }
     </style>
 </head>
 <body>
@@ -351,6 +362,10 @@
                 <div class="form-group">
                     <label for="price">价格（可选）</label>
                     <input type="text" id="price" placeholder="例如：500元、面议、3000元/月">
+                </div>
+                <div class="form-group">
+                    <label for="location">地点（可选）</label>
+                    <input type="text" id="location" placeholder="例如：建德市区、寿昌镇、大洋镇">
                 </div>
                 <div class="form-group">
                     <label for="images">上传图片（最多9张）</label>
@@ -568,7 +583,8 @@
                             <span class="post-category category-${post.category}">${post.category}</span>
                         </div>
                         <div class="post-content">${escapeHtml(post.content)}</div>
-                        ${post.price ? `<div class="post-price">💰 ${escapeHtml(post.price)}</div>` : ''}
+                        ${post.price ? `<div class="post-price">¥ ${escapeHtml(post.price)}</div>` : ''}
+                        ${post.location ? `<div class="post-location">${escapeHtml(post.location)}</div>` : ''}
                         ${post.images && post.images.length > 0 ? `
                             <div class="post-images">
                                 ${post.images.map(img => `<img src="/uploads/${img}" alt="图片" onclick="window.open('/uploads/${img}')">`).join('')}
@@ -605,6 +621,7 @@
             document.getElementById('content').value = post.content;
             document.getElementById('contact').value = post.contact;
             document.getElementById('price').value = post.price || '';
+            document.getElementById('location').value = post.location || '';
             uploadedImages = post.images ? [...post.images] : [];
             renderImagePreview();
 
@@ -664,6 +681,7 @@
                 content: document.getElementById('content').value,
                 contact: document.getElementById('contact').value,
                 price: document.getElementById('price').value,
+                location: document.getElementById('location').value,
                 images: uploadedImages,
                 timestamp: isEditing ? posts.find(p => p.id == editingPostId).timestamp : Date.now()
             };

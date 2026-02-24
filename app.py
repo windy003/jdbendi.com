@@ -71,7 +71,9 @@ def init_db():
             images TEXT,
             timestamp INTEGER NOT NULL,
             price TEXT,
-            user_id INTEGER
+            user_id INTEGER,
+            location TEXT,
+            videos TEXT
         )
     ''')
 
@@ -86,6 +88,18 @@ def init_db():
         cursor.execute("SELECT user_id FROM posts LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE posts ADD COLUMN user_id INTEGER")
+
+    # 如果表已存在但没有location字段，则添加location字段
+    try:
+        cursor.execute("SELECT location FROM posts LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE posts ADD COLUMN location TEXT")
+
+    # 如果表已存在但没有videos字段，则添加videos字段
+    try:
+        cursor.execute("SELECT videos FROM posts LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE posts ADD COLUMN videos TEXT")
 
     # 创建users表
     cursor.execute('''
@@ -292,7 +306,8 @@ def get_posts():
             'contact': row['contact'],
             'images': json.loads(row['images']) if row['images'] else [],
             'timestamp': row['timestamp'],
-            'price': row['price'] if 'price' in row.keys() else None
+            'price': row['price'] if 'price' in row.keys() else None,
+            'location': row['location'] if 'location' in row.keys() else None
         }
         posts.append(post)
 
@@ -395,8 +410,8 @@ def create_post():
     images_json = json.dumps(data.get('images', []))
 
     cursor.execute('''
-        INSERT INTO posts (category, title, content, contact, images, timestamp, price, user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO posts (category, title, content, contact, images, timestamp, price, user_id, location)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         data.get('category'),
         data.get('title'),
@@ -405,7 +420,8 @@ def create_post():
         images_json,
         data.get('timestamp'),
         data.get('price'),
-        session.get('user_id')
+        session.get('user_id'),
+        data.get('location')
     ))
 
     conn.commit()
@@ -421,7 +437,8 @@ def create_post():
         'images': data.get('images', []),
         'timestamp': data.get('timestamp'),
         'price': data.get('price'),
-        'user_id': session.get('user_id')
+        'user_id': session.get('user_id'),
+        'location': data.get('location')
     }
 
     return jsonify({'success': True, 'message': '发布成功', 'data': new_post})
@@ -461,7 +478,7 @@ def update_post(post_id):
     # 更新数据库记录
     cursor.execute('''
         UPDATE posts
-        SET category = ?, title = ?, content = ?, contact = ?, images = ?, price = ?
+        SET category = ?, title = ?, content = ?, contact = ?, images = ?, price = ?, location = ?
         WHERE id = ?
     ''', (
         data.get('category'),
@@ -470,6 +487,7 @@ def update_post(post_id):
         data.get('contact'),
         images_json,
         data.get('price'),
+        data.get('location'),
         post_id
     ))
 
@@ -484,7 +502,8 @@ def update_post(post_id):
         'contact': data.get('contact'),
         'images': new_images,
         'timestamp': data.get('timestamp'),
-        'price': data.get('price')
+        'price': data.get('price'),
+        'location': data.get('location')
     }
 
     return jsonify({'success': True, 'message': '更新成功', 'data': updated_post})
@@ -509,7 +528,8 @@ def get_my_posts():
             'images': json.loads(row['images']) if row['images'] else [],
             'timestamp': row['timestamp'],
             'price': row['price'] if 'price' in row.keys() else None,
-            'user_id': row['user_id']
+            'user_id': row['user_id'],
+            'location': row['location'] if 'location' in row.keys() else None
         }
         posts.append(post)
 
@@ -528,8 +548,7 @@ def delete_post(post_id):
     cursor.execute('SELECT images FROM posts WHERE id = ?', (post_id,))
     row = cursor.fetchone()
     if row and row['images']:
-        images = json.loads(row['images'])
-        for image in images:
+        for image in json.loads(row['images']):
             image_path = os.path.join(app.config['UPLOAD_FOLDER'], image)
             if os.path.exists(image_path):
                 try:
@@ -621,7 +640,7 @@ def upload_image():
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'上传失败: {str(e)}'}), 500
 
-# 路由：访问上传的图片
+# 路由：访问上传的文件
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)

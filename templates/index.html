@@ -161,6 +161,18 @@
             margin: 10px 0;
         }
 
+        .post-location {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+            background: #9C27B0;
+            margin: 6px 0;
+        }
+
+
         .post-footer {
             margin-top: 10px;
             padding-top: 10px;
@@ -522,7 +534,8 @@
                             <span class="post-category category-${post.category}">${post.category}</span>
                         </div>
                         <div class="post-content">${escapeHtml(post.content)}</div>
-                        ${post.price ? `<div class="post-price">💰 ${escapeHtml(post.price)}</div>` : ''}
+                        ${post.price ? `<div class="post-price">¥ ${escapeHtml(post.price)}</div>` : ''}
+                        ${post.location ? `<div class="post-location">${escapeHtml(post.location)}</div>` : ''}
                         ${post.images && post.images.length > 0 ? `
                             <div class="post-images">
                                 ${post.images.map((img, i) => `<img src="/uploads/${img}" alt="图片" onclick="openLightbox(${post.id}, ${i})">`).join('')}
