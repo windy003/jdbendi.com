@@ -1,0 +1,3 @@
+ADMIN_USERNAME=windy
+ADMIN_PASSWORD=ALLrise258023
+SECRET_KEY=your-secret-key-here-change-in-production
