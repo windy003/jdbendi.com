@@ -637,6 +637,11 @@ def upload_image():
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+# 路由：微信收款码
+@app.route('/wechat_pay.png')
+def wechat_pay():
+    return send_from_directory('.', '微信收款码.png')
+
 # API：获取用户列表（仅管理员）
 @app.route('/api/admin/users', methods=['GET'])
 @admin_required
