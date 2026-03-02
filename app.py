@@ -592,20 +592,12 @@ def upload_image():
             print("错误: 文件名为空")
             return jsonify({'success': False, 'message': '未选择文件'}), 400
 
-        # 使用 secure_filename 处理文件名
-        safe_filename = secure_filename(original_filename)
-        print(f"安全文件名: {safe_filename}")
-
-        if not safe_filename:
-            print("错误: 文件名处理后为空")
-            return jsonify({'success': False, 'message': '文件名不合法'}), 400
-
-        # 检查文件扩展名
-        if '.' not in safe_filename:
+        # 直接从原始文件名提取扩展名（避免 secure_filename 剥掉中文后丢失扩展名）
+        if '.' not in original_filename:
             print("错误: 文件没有扩展名")
             return jsonify({'success': False, 'message': '文件必须有扩展名'}), 400
 
-        ext = safe_filename.rsplit('.', 1)[1].lower()
+        ext = original_filename.rsplit('.', 1)[1].lower()
         print(f"文件扩展名: {ext}")
 
         if ext not in ALLOWED_EXTENSIONS:
