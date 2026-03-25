@@ -114,10 +114,44 @@ def init_db():
         )
     ''')
 
+    # 创建评论表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            parent_id INTEGER,
+            content TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            FOREIGN KEY (post_id) REFERENCES posts(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (parent_id) REFERENCES comments(id)
+        )
+    ''')
+
+    # 创建通知表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            post_id INTEGER,
+            comment_id INTEGER,
+            from_user_id INTEGER,
+            content TEXT,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            timestamp INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (from_user_id) REFERENCES users(id)
+        )
+    ''')
+
     # 创建索引
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_username ON users(username)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_role ON users(role)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_status ON users(status)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)')
 
     conn.commit()
     conn.close()
@@ -259,6 +293,11 @@ def post_owner_or_admin(f):
 def index():
     return render_template('index.html', admin_contact=ADMIN_CONTACT)
 
+# 路由：帖子详情页
+@app.route('/post/<int:post_id>')
+def post_detail(post_id):
+    return render_template('post_detail.html', post_id=post_id, admin_contact=ADMIN_CONTACT)
+
 # 路由：用户注册页面
 @app.route('/register')
 def register_page():
@@ -292,9 +331,17 @@ def get_posts():
     category = request.args.get('category', '全部')
 
     if category != '全部':
-        cursor.execute('SELECT * FROM posts WHERE category = ? ORDER BY timestamp DESC', (category,))
+        cursor.execute('''
+            SELECT p.*, u.username as author
+            FROM posts p LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.category = ? ORDER BY p.timestamp DESC
+        ''', (category,))
     else:
-        cursor.execute('SELECT * FROM posts ORDER BY timestamp DESC')
+        cursor.execute('''
+            SELECT p.*, u.username as author
+            FROM posts p LEFT JOIN users u ON p.user_id = u.id
+            ORDER BY p.timestamp DESC
+        ''')
 
     posts = []
     for row in cursor.fetchall():
@@ -307,12 +354,43 @@ def get_posts():
             'images': json.loads(row['images']) if row['images'] else [],
             'timestamp': row['timestamp'],
             'price': row['price'] if 'price' in row.keys() else None,
-            'location': row['location'] if 'location' in row.keys() else None
+            'location': row['location'] if 'location' in row.keys() else None,
+            'author': row['author'] if 'author' in row.keys() else None,
+            'user_id': row['user_id']
         }
         posts.append(post)
 
     conn.close()
     return jsonify({'success': True, 'data': posts})
+
+# API：获取单条信息详情
+@app.route('/api/posts/<int:post_id>', methods=['GET'])
+def get_post(post_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT p.*, u.username as author
+        FROM posts p LEFT JOIN users u ON p.user_id = u.id
+        WHERE p.id = ?
+    ''', (post_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'success': False, 'message': '信息不存在'}), 404
+    post = {
+        'id': row['id'],
+        'category': row['category'],
+        'title': row['title'],
+        'content': row['content'],
+        'contact': row['contact'],
+        'images': json.loads(row['images']) if row['images'] else [],
+        'timestamp': row['timestamp'],
+        'price': row['price'] if 'price' in row.keys() else None,
+        'location': row['location'] if 'location' in row.keys() else None,
+        'author': row['author'] if 'author' in row.keys() else None,
+        'user_id': row['user_id']
+    }
+    return jsonify({'success': True, 'data': post})
 
 # API：用户注册
 @app.route('/api/register', methods=['POST'])
@@ -750,6 +828,233 @@ def get_stats():
     }
 
     return jsonify({'success': True, 'data': stats})
+
+# ========== 评论 API ==========
+
+def parse_mentions(content):
+    """解析评论内容中的 @用户名"""
+    return re.findall(r'@([a-zA-Z0-9_]+)', content)
+
+NOTIF_MAX_PER_USER = 200      # 每个用户最多保留通知数
+NOTIF_READ_EXPIRE_DAYS = 30   # 已读通知保留天数
+
+def cleanup_notifications(cursor, user_id):
+    """清理旧通知：删除已读且超过30天的，以及超出上限的最旧记录"""
+    expire_ts = int(time.time() * 1000) - NOTIF_READ_EXPIRE_DAYS * 86400 * 1000
+    # 删除已读且过期的
+    cursor.execute(
+        'DELETE FROM notifications WHERE user_id = ? AND is_read = 1 AND timestamp < ?',
+        (user_id, expire_ts)
+    )
+    # 保留最新的 NOTIF_MAX_PER_USER 条，删除超出部分
+    cursor.execute('''
+        DELETE FROM notifications WHERE user_id = ? AND id NOT IN (
+            SELECT id FROM notifications WHERE user_id = ?
+            ORDER BY timestamp DESC LIMIT ?
+        )
+    ''', (user_id, user_id, NOTIF_MAX_PER_USER))
+
+def send_notification(cursor, user_id, ntype, post_id, comment_id, from_user_id, content):
+    """发送通知（不重复通知自己）"""
+    if user_id == from_user_id:
+        return
+    cursor.execute('''
+        INSERT INTO notifications (user_id, type, post_id, comment_id, from_user_id, content, is_read, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+    ''', (user_id, ntype, post_id, comment_id, from_user_id, content, int(time.time() * 1000)))
+    cleanup_notifications(cursor, user_id)
+
+# API：获取某帖子的评论
+@app.route('/api/posts/<int:post_id>/comments', methods=['GET'])
+def get_comments(post_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT c.id, c.post_id, c.user_id, c.parent_id, c.content, c.timestamp,
+               u.username
+        FROM comments c
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE c.post_id = ?
+        ORDER BY c.timestamp ASC
+    ''', (post_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    comments = [{
+        'id': r['id'],
+        'post_id': r['post_id'],
+        'user_id': r['user_id'],
+        'parent_id': r['parent_id'],
+        'content': r['content'],
+        'timestamp': r['timestamp'],
+        'username': r['username']
+    } for r in rows]
+    return jsonify({'success': True, 'data': comments})
+
+# API：发表评论（需要登录）
+@app.route('/api/posts/<int:post_id>/comments', methods=['POST'])
+@login_required
+def create_comment(post_id):
+    data = request.get_json()
+    content = data.get('content', '').strip()
+    parent_id = data.get('parent_id')  # 回复哪条评论
+
+    if not content:
+        return jsonify({'success': False, 'message': '评论内容不能为空'}), 400
+    if len(content) > 500:
+        return jsonify({'success': False, 'message': '评论内容不能超过500字'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 验证帖子存在
+    cursor.execute('SELECT user_id FROM posts WHERE id = ?', (post_id,))
+    post_row = cursor.fetchone()
+    if not post_row:
+        conn.close()
+        return jsonify({'success': False, 'message': '帖子不存在'}), 404
+
+    now = int(time.time() * 1000)
+    from_uid = session.get('user_id')
+
+    cursor.execute('''
+        INSERT INTO comments (post_id, user_id, parent_id, content, timestamp)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (post_id, from_uid, parent_id, content, now))
+    comment_id = cursor.lastrowid
+
+    # 通知帖子作者（有人评论了我的帖子）
+    if post_row['user_id']:
+        send_notification(cursor, post_row['user_id'], 'comment', post_id, comment_id, from_uid, content)
+
+    # 如果是回复，通知被回复的评论作者
+    if parent_id:
+        cursor.execute('SELECT user_id FROM comments WHERE id = ?', (parent_id,))
+        parent_row = cursor.fetchone()
+        if parent_row and parent_row['user_id'] != post_row['user_id']:
+            send_notification(cursor, parent_row['user_id'], 'reply', post_id, comment_id, from_uid, content)
+
+    # 解析 @用户名，发通知
+    mentions = parse_mentions(content)
+    notified = set()
+    if post_row['user_id']:
+        notified.add(post_row['user_id'])
+    if parent_id:
+        cursor.execute('SELECT user_id FROM comments WHERE id = ?', (parent_id,))
+        pr = cursor.fetchone()
+        if pr:
+            notified.add(pr['user_id'])
+    for mention in mentions:
+        cursor.execute('SELECT id FROM users WHERE username = ?', (mention,))
+        mu = cursor.fetchone()
+        if mu and mu['id'] not in notified:
+            send_notification(cursor, mu['id'], 'mention', post_id, comment_id, from_uid, content)
+            notified.add(mu['id'])
+
+    conn.commit()
+
+    # 返回完整评论对象
+    cursor.execute('''
+        SELECT c.id, c.post_id, c.user_id, c.parent_id, c.content, c.timestamp, u.username
+        FROM comments c LEFT JOIN users u ON c.user_id = u.id
+        WHERE c.id = ?
+    ''', (comment_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    return jsonify({'success': True, 'data': {
+        'id': row['id'], 'post_id': row['post_id'], 'user_id': row['user_id'],
+        'parent_id': row['parent_id'], 'content': row['content'],
+        'timestamp': row['timestamp'], 'username': row['username']
+    }})
+
+# API：删除评论（本人或管理员）
+@app.route('/api/comments/<int:comment_id>', methods=['DELETE'])
+@login_required
+def delete_comment(comment_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT user_id FROM comments WHERE id = ?', (comment_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'success': False, 'message': '评论不存在'}), 404
+    if row['user_id'] != session.get('user_id') and session.get('role') != 'admin':
+        conn.close()
+        return jsonify({'success': False, 'message': '无权删除'}), 403
+    cursor.execute('DELETE FROM comments WHERE id = ?', (comment_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': '评论已删除'})
+
+# ========== 通知 API ==========
+
+# API：获取我的通知
+@app.route('/api/notifications', methods=['GET'])
+@login_required
+def get_notifications():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT n.id, n.type, n.post_id, n.comment_id, n.content, n.is_read, n.timestamp,
+               u.username as from_username,
+               p.title as post_title
+        FROM notifications n
+        LEFT JOIN users u ON n.from_user_id = u.id
+        LEFT JOIN posts p ON n.post_id = p.id
+        WHERE n.user_id = ?
+        ORDER BY n.timestamp DESC
+        LIMIT 50
+    ''', (session.get('user_id'),))
+    rows = cursor.fetchall()
+    conn.close()
+    notifications = [{
+        'id': r['id'], 'type': r['type'], 'post_id': r['post_id'],
+        'comment_id': r['comment_id'], 'content': r['content'],
+        'is_read': r['is_read'], 'timestamp': r['timestamp'],
+        'from_username': r['from_username'], 'post_title': r['post_title']
+    } for r in rows]
+    return jsonify({'success': True, 'data': notifications})
+
+# API：获取未读通知数量
+@app.route('/api/notifications/unread_count', methods=['GET'])
+@login_required
+def get_unread_count():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0',
+                   (session.get('user_id'),))
+    count = cursor.fetchone()['cnt']
+    conn.close()
+    return jsonify({'success': True, 'count': count})
+
+# API：标记所有通知为已读
+@app.route('/api/notifications/read_all', methods=['POST'])
+@login_required
+def read_all_notifications():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE notifications SET is_read = 1 WHERE user_id = ?', (session.get('user_id'),))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+# API：搜索用户名（用于 @ 提示）
+@app.route('/api/users/search', methods=['GET'])
+def search_users():
+    q = request.args.get('q', '').strip()
+    if not q or len(q) < 1:
+        return jsonify({'success': True, 'data': []})
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT username FROM users
+        WHERE username LIKE ? AND status = 'active'
+        LIMIT 8
+    ''', (q + '%',))
+    users = [r['username'] for r in cursor.fetchall()]
+    conn.close()
+    return jsonify({'success': True, 'data': users})
+
 
 if __name__ == '__main__':
     # 创建必要的目录

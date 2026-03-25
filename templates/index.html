@@ -7,138 +7,52 @@
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
-
     gtag('config', 'G-GGYL6D2XPB');
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='180x180.png') }}"> 
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='180x180.png') }}">
     <title>建德本地供求信息发布</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 0;
         }
-
-        .container {
-            max-width: 100%;
-            margin: 0 auto;
-            padding: 15px;
-        }
-
-        header {
-            background: white;
-            padding: 20px 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-
+        .container { max-width: 100%; margin: 0 auto; padding: 15px; }
+        header { background: white; padding: 20px 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
         h1 {
-            color: #ffffff;
-            font-size: 24px;
-            text-align: center;
-            margin-bottom: 10px;
+            color: #ffffff; font-size: 24px; text-align: center; margin-bottom: 10px;
             background-image: url("{{ url_for('static', filename='jd_scene2.png') }}");
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            padding: 40px 20px;
-            border-radius: 12px;
-            position: relative;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            background-size: cover; background-position: center; background-repeat: no-repeat;
+            padding: 40px 20px; border-radius: 12px; position: relative;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8); box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
-
         h1::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.3);
-            border-radius: 12px;
-            z-index: 0;
+            content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.3); border-radius: 12px; z-index: 0;
         }
-
-        h1 span {
-            position: relative;
-            z-index: 1;
-            color: #ffffff;
-        }
-
+        h1 span { position: relative; z-index: 1; color: #ffffff; }
         .filter-section {
-            background: white;
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: white; padding: 15px; border-radius: 12px;
+            margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-
-        .filter-section select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 16px;
-            margin-bottom: 0;
-        }
-
-        .filter-section label {
-            display: block;
-            margin-bottom: 5px;
-            color: #333;
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        .posts-section {
-            margin-bottom: 20px;
-        }
-
+        .filter-section select { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 16px; }
+        .filter-section label { display: block; margin-bottom: 5px; color: #333; font-weight: 600; font-size: 14px; }
+        .posts-section { margin-bottom: 20px; }
         .post-card {
-            background: white;
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            position: relative;
+            background: white; padding: 15px; border-radius: 12px;
+            margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative;
         }
-
-        .post-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .post-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: #333;
-            margin: 0;
-            flex: 1;
-        }
-
+        .post-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .post-title { font-size: 18px; font-weight: 700; color: #333; margin: 0; flex: 1; }
+        .post-title a { color: #333; text-decoration: none; }
+        .post-title a:hover { color: #667eea; }
         .post-category {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-            color: white;
-            margin-left: 10px;
-            flex-shrink: 0;
+            display: inline-block; padding: 4px 10px; border-radius: 12px;
+            font-size: 12px; font-weight: 600; color: white; margin-left: 10px; flex-shrink: 0;
         }
-
         .category-出售 { background: #4CAF50; }
         .category-求购 { background: #2196F3; }
         .category-招聘 { background: #FF9800; }
@@ -146,170 +60,109 @@
         .category-出售房屋 { background: #E91E63; }
         .category-其他 { background: #607D8B; }
         .category-找对象 { background: #E91E63; }
-
-        .post-content {
-            color: #666;
-            line-height: 1.6;
-            margin: 10px 0;
-            font-size: 14px;
-            white-space: pre-wrap;
-        }
-
-        .post-price {
-            font-size: 20px;
-            font-weight: 700;
-            color: #E91E63;
-            margin: 10px 0;
-        }
-
+        .post-author { font-size: 12px; color: #888; margin-bottom: 6px; }
+        .post-author span { color: #667eea; font-weight: 600; }
+        .post-content { color: #666; line-height: 1.6; margin: 10px 0; font-size: 14px; white-space: pre-wrap; }
+        .post-price { font-size: 20px; font-weight: 700; color: #E91E63; margin: 10px 0; }
         .post-location {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-            color: white;
-            background: #9C27B0;
-            margin: 6px 0;
+            display: inline-block; padding: 4px 10px; border-radius: 12px;
+            font-size: 12px; font-weight: 600; color: white; background: #9C27B0; margin: 6px 0;
         }
-
-
-        .post-footer {
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid #e0e0e0;
-        }
-
-        .post-time {
-            font-size: 12px;
-            color: #999;
-        }
-
-        .post-contact {
-            font-size: 14px;
-            color: #667eea;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: white;
-            font-size: 16px;
-        }
-
-        .footer {
-            background: white;
-            padding: 20px 15px;
-            text-align: center;
-            margin-top: 20px;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
-        }
-
+        .post-footer { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e0e0e0; }
+        .post-time { font-size: 12px; color: #999; }
+        .post-contact { font-size: 14px; color: #667eea; font-weight: 600; margin-bottom: 5px; }
+        .post-meta-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+        .detail-link { font-size: 12px; color: #667eea; text-decoration: none; }
+        .detail-link:hover { text-decoration: underline; }
+        .empty-state { text-align: center; padding: 40px 20px; color: white; font-size: 16px; }
+        .footer { background: white; padding: 20px 15px; text-align: center; margin-top: 20px; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); }
         .footer-contact {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px 15px;
-            border-radius: 8px;
-            font-size: 14px;
+            color: white; padding: 12px 15px; border-radius: 8px; font-size: 14px;
         }
+        .post-images { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+        .post-images img { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.2s; }
+        .post-images img:hover { transform: scale(1.05); }
 
-        .post-images {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-            margin: 10px 0;
+        /* 评论区 */
+        .comment-section { margin-top: 12px; border-top: 1px solid #f0f0f0; padding-top: 10px; }
+        .comment-toggle {
+            background: none; border: none; color: #667eea; font-size: 13px;
+            cursor: pointer; padding: 4px 0; font-weight: 600;
         }
-
-        .post-images img {
-            width: 100%;
-            height: 100px;
-            object-fit: cover;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: transform 0.2s;
+        .comment-list { margin-top: 8px; display: none; }
+        .comment-list.open { display: block; }
+        .comment-item { padding: 8px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px; }
+        .comment-item:last-child { border-bottom: none; }
+        .comment-username { color: #667eea; font-weight: 600; margin-right: 4px; }
+        .comment-reply-to { color: #aaa; margin-right: 4px; }
+        .comment-reply-to .mention { color: #667eea; }
+        .comment-content { color: #444; line-height: 1.5; }
+        .comment-content .at-mention { color: #667eea; font-weight: 600; }
+        .comment-time { color: #bbb; font-size: 11px; margin-top: 2px; }
+        .comment-actions { display: inline; margin-left: 8px; }
+        .comment-reply-btn, .comment-del-btn {
+            background: none; border: none; font-size: 11px; cursor: pointer; padding: 0 4px;
         }
-
-        .post-images img:hover {
-            transform: scale(1.05);
+        .comment-reply-btn { color: #667eea; }
+        .comment-del-btn { color: #f44336; }
+        .comment-form { margin-top: 10px; display: none; }
+        .comment-form.open { display: block; }
+        .comment-input-wrap { position: relative; }
+        .comment-input {
+            width: 100%; padding: 8px 10px; border: 1px solid #ddd;
+            border-radius: 8px; font-size: 13px; resize: none; min-height: 60px;
+            font-family: inherit;
         }
+        .comment-input:focus { outline: none; border-color: #667eea; }
+        .comment-submit-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+        .comment-submit-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border: none; border-radius: 6px; padding: 6px 16px;
+            font-size: 13px; cursor: pointer;
+        }
+        .comment-cancel-reply {
+            background: none; border: none; color: #aaa; font-size: 12px; cursor: pointer;
+        }
+        .reply-hint { font-size: 12px; color: #888; }
+        /* @ 提示下拉 */
+        .mention-dropdown {
+            position: absolute; background: white; border: 1px solid #ddd;
+            border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 100; min-width: 140px; max-height: 200px; overflow-y: auto;
+            display: none;
+        }
+        .mention-item { padding: 8px 12px; cursor: pointer; font-size: 13px; }
+        .mention-item:hover { background: #f0f0ff; color: #667eea; }
 
         /* Lightbox */
         #lightbox {
-            display: none;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.92);
-            z-index: 9999;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            touch-action: pan-y;
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 9999; flex-direction: column;
+            align-items: center; justify-content: center; touch-action: pan-y;
         }
-
         #lightbox.active { display: flex; }
-
-        #lightboxImg {
-            max-width: 95%;
-            max-height: 80vh;
-            object-fit: contain;
-            border-radius: 8px;
-            user-select: none;
-            -webkit-user-drag: none;
-            transition: transform 0.15s ease;
-        }
-
+        #lightboxImg { max-width: 95%; max-height: 80vh; object-fit: contain; border-radius: 8px; user-select: none; -webkit-user-drag: none; }
         #lightboxClose {
-            position: absolute;
-            top: 12px; right: 12px;
-            background: rgba(255,255,255,0.2);
-            border: none; color: white;
-            font-size: 22px;
-            width: 42px; height: 42px;
-            border-radius: 50%;
-            cursor: pointer;
-            line-height: 1;
-            display: flex; align-items: center; justify-content: center;
+            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.2);
+            border: none; color: white; font-size: 22px; width: 42px; height: 42px;
+            border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;
         }
-
         #lightboxCounter {
-            position: absolute;
-            top: 16px; left: 50%;
-            transform: translateX(-50%);
-            color: white; font-size: 14px;
-            background: rgba(0,0,0,0.4);
-            padding: 4px 12px;
-            border-radius: 12px;
+            position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+            color: white; font-size: 14px; background: rgba(0,0,0,0.4); padding: 4px 12px; border-radius: 12px;
         }
-
         .lightbox-nav {
-            position: absolute;
-            top: 50%; transform: translateY(-50%);
-            background: rgba(255,255,255,0.2);
-            border: none; color: white;
-            font-size: 32px;
-            width: 48px; height: 48px;
-            border-radius: 50%;
-            cursor: pointer;
+            position: absolute; top: 50%; transform: translateY(-50%);
+            background: rgba(255,255,255,0.2); border: none; color: white; font-size: 32px;
+            width: 48px; height: 48px; border-radius: 50%; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
         }
-
-        #lightboxPrev { left: 8px; }
-        #lightboxNext { right: 8px; }
+        #lightboxPrev { left: 8px; } #lightboxNext { right: 8px; }
 
         @media (min-width: 768px) {
-            .container {
-                max-width: 600px;
-                padding: 20px;
-            }
-
-            h1 {
-                font-size: 32px;
-                padding: 60px 40px;
-                background-position: center 25%;
-            }
+            .container { max-width: 600px; padding: 20px; }
+            h1 { font-size: 32px; padding: 60px 40px; background-position: center 25%; }
         }
     </style>
 </head>
@@ -336,7 +189,6 @@
                 <option value="其他">其他</option>
             </select>
         </div>
-
         <div class="posts-section" id="postsSection"></div>
     </div>
 
@@ -345,9 +197,7 @@
             <p style="color: #555; font-size: 14px; margin-bottom: 10px;">如果你觉得这个网站对你有帮助，欢迎支持一下作者,有了你的资金支持可以让我有更多的时间和精力来专心的维护这个网站!</p>
             <img src="/wechat_pay.png" alt="微信收款码" style="width: 180px; height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid #e0e0e0;">
         </div>
-        <div class="footer-contact">
-            有问题或建议,请联系站长:周秋良,手机:15868404601微信同号
-        </div>
+        <div class="footer-contact">有问题或建议,请联系站长:周秋良,手机:15868404601微信同号</div>
     </footer>
 
     <!-- Lightbox -->
@@ -362,12 +212,7 @@
     <script>
         let posts = [];
         let currentUser = null;
-
-        // Lightbox
-        let lbImages = [];
-        let lbIndex = 0;
-        let lbTouchStartX = 0;
-        let lbTouchStartY = 0;
+        let lbImages = [], lbIndex = 0, lbTouchStartX = 0, lbTouchStartY = 0;
         const postImagesMap = {};
 
         function openLightbox(postId, idx) {
@@ -378,196 +223,317 @@
             document.body.style.overflow = 'hidden';
             updateLightbox();
         }
-
         function closeLightbox() {
             document.getElementById('lightbox').classList.remove('active');
             document.body.style.overflow = '';
         }
-
         function updateLightbox() {
             document.getElementById('lightboxImg').src = '/uploads/' + lbImages[lbIndex];
             const counter = document.getElementById('lightboxCounter');
-            const hasMultiple = lbImages.length > 1;
-            counter.textContent = hasMultiple ? (lbIndex + 1) + ' / ' + lbImages.length : '';
-            counter.style.display = hasMultiple ? 'block' : 'none';
-            document.getElementById('lightboxPrev').style.display = hasMultiple ? 'flex' : 'none';
-            document.getElementById('lightboxNext').style.display = hasMultiple ? 'flex' : 'none';
+            const has = lbImages.length > 1;
+            counter.textContent = has ? (lbIndex + 1) + ' / ' + lbImages.length : '';
+            counter.style.display = has ? 'block' : 'none';
+            document.getElementById('lightboxPrev').style.display = has ? 'flex' : 'none';
+            document.getElementById('lightboxNext').style.display = has ? 'flex' : 'none';
         }
-
         function lightboxNav(dir) {
             lbIndex = (lbIndex + dir + lbImages.length) % lbImages.length;
             updateLightbox();
         }
-
         const lb = document.getElementById('lightbox');
-        lb.addEventListener('touchstart', function(e) {
-            lbTouchStartX = e.touches[0].clientX;
-            lbTouchStartY = e.touches[0].clientY;
-        }, { passive: true });
-
-        lb.addEventListener('touchend', function(e) {
+        lb.addEventListener('touchstart', e => { lbTouchStartX = e.touches[0].clientX; lbTouchStartY = e.touches[0].clientY; }, { passive: true });
+        lb.addEventListener('touchend', e => {
             const dx = e.changedTouches[0].clientX - lbTouchStartX;
             const dy = e.changedTouches[0].clientY - lbTouchStartY;
-            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
-                lightboxNav(dx < 0 ? 1 : -1);
-            } else if (dy > 80 && Math.abs(dx) < 40) {
-                // 下滑关闭
-                closeLightbox();
-            }
+            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) lightboxNav(dx < 0 ? 1 : -1);
+            else if (dy > 80 && Math.abs(dx) < 40) closeLightbox();
         }, { passive: true });
-
-        lb.addEventListener('click', function(e) {
-            if (e.target === lb) closeLightbox();
-        });
-
-        document.addEventListener('keydown', function(e) {
+        lb.addEventListener('click', e => { if (e.target === lb) closeLightbox(); });
+        document.addEventListener('keydown', e => {
             if (!lb.classList.contains('active')) return;
             if (e.key === 'ArrowLeft') lightboxNav(-1);
             else if (e.key === 'ArrowRight') lightboxNav(1);
             else if (e.key === 'Escape') closeLightbox();
         });
 
-        // 检查登录状态并更新导航栏
         async function checkLoginStatus() {
             try {
-                const response = await fetch('/api/check_login');
-                const result = await response.json();
-
-                if (result.logged_in) {
-                    currentUser = result.user;
-                    updateNavBar(true, result.user);
-                } else {
-                    currentUser = null;
-                    updateNavBar(false, null);
-                }
-            } catch (error) {
-                console.error('检查登录状态失败:', error);
-                updateNavBar(false, null);
-            }
+                const res = await fetch('/api/check_login');
+                const r = await res.json();
+                if (r.logged_in) { currentUser = r.user; updateNavBar(true, r.user); }
+                else { currentUser = null; updateNavBar(false, null); }
+            } catch(e) { updateNavBar(false, null); }
         }
 
-        // 更新导航栏
         function updateNavBar(isLoggedIn, user) {
-            const authNav = document.getElementById('authNav');
-
+            const nav = document.getElementById('authNav');
             if (isLoggedIn && user) {
                 const centerLink = user.role === 'admin'
-                    ? '<a href="/admin" style="color: #667eea; text-decoration: none; margin: 0 10px; font-weight: 600;">管理后台</a>'
-                    : '<a href="/user_center" style="color: #667eea; text-decoration: none; margin: 0 10px; font-weight: 600;">个人中心</a>';
-
-                authNav.innerHTML = `
-                    <span style="color: #667eea; font-weight: 600;">欢迎, ${escapeHtml(user.username)}</span> |
+                    ? '<a href="/admin" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">管理后台</a>'
+                    : '<a href="/user_center" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">个人中心</a>';
+                nav.innerHTML = `
+                    <span style="color:#667eea;font-weight:600;">欢迎, ${escapeHtml(user.username)}</span> |
                     ${centerLink} |
-                    <a href="#" onclick="logout(); return false;" style="color: #667eea; text-decoration: none; margin: 0 10px; font-weight: 600;">退出登录</a>
+                    <a href="#" onclick="logout();return false;" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">退出登录</a>
                 `;
             } else {
-                authNav.innerHTML = `
-                    <a href="/register" style="color: #667eea; text-decoration: none; margin: 0 10px; font-weight: 600;">注册</a> |
-                    <a href="/login" style="color: #667eea; text-decoration: none; margin: 0 10px; font-weight: 600;">登录</a>
+                nav.innerHTML = `
+                    <a href="/register" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">注册</a> |
+                    <a href="/login" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">登录</a>
                 `;
             }
         }
 
-        // 退出登录
         async function logout() {
-            try {
-                const response = await fetch('/api/logout', {
-                    method: 'POST'
-                });
-                const result = await response.json();
-
-                if (result.success) {
-                    currentUser = null;
-                    updateNavBar(false, null);
-                    alert('已退出登录');
-                }
-            } catch (error) {
-                console.error('退出登录失败:', error);
-            }
+            await fetch('/api/logout', { method: 'POST' });
+            currentUser = null;
+            updateNavBar(false, null);
         }
 
-        // 从服务器加载信息
         async function loadPosts(category = '全部') {
             try {
-                const response = await fetch(`/api/posts?category=${encodeURIComponent(category)}`);
-                const result = await response.json();
-
-                if (result.success) {
-                    posts = result.data;
-                    renderPosts();
-                }
-            } catch (error) {
-                console.error('加载信息失败:', error);
-            }
+                const res = await fetch('/api/posts?category=' + encodeURIComponent(category));
+                const r = await res.json();
+                if (r.success) { posts = r.data; renderPosts(); }
+            } catch(e) { console.error(e); }
         }
 
-        function formatTime(timestamp) {
-            const date = new Date(timestamp);
-            const now = new Date();
-            const diff = now - date;
-
-            if (diff < 60000) {
-                return '刚刚';
-            } else if (diff < 3600000) {
-                return Math.floor(diff / 60000) + '分钟前';
-            } else if (diff < 86400000) {
-                return Math.floor(diff / 3600000) + '小时前';
-            } else if (diff < 2592000000) {
-                return Math.floor(diff / 86400000) + '天前';
-            } else {
-                return date.toLocaleDateString('zh-CN');
-            }
-        }
-
-        function renderPosts() {
-            const postsSection = document.getElementById('postsSection');
-
-            if (posts.length === 0) {
-                postsSection.innerHTML = '<div class="empty-state">暂无信息</div>';
-                return;
-            }
-
-            postsSection.innerHTML = posts
-                .sort((a, b) => b.timestamp - a.timestamp)
-                .map((post) => {
-                    if (post.images && post.images.length > 0) {
-                        postImagesMap[post.id] = post.images;
-                    }
-                    return `
-                    <div class="post-card">
-                        <div class="post-header">
-                            <h3 class="post-title">${escapeHtml(post.title)}</h3>
-                            <span class="post-category category-${post.category}">${post.category}</span>
-                        </div>
-                        <div class="post-content">${escapeHtml(post.content)}</div>
-                        ${post.price ? `<div class="post-price">¥ ${escapeHtml(post.price)}</div>` : ''}
-                        ${post.location ? `<div class="post-location">${escapeHtml(post.location)}</div>` : ''}
-                        ${post.images && post.images.length > 0 ? `
-                            <div class="post-images">
-                                ${post.images.map((img, i) => `<img src="/uploads/${img}" alt="图片" onclick="openLightbox(${post.id}, ${i})">`).join('')}
-                            </div>
-                        ` : ''}
-                        <div class="post-footer">
-                            <div class="post-contact">📞 ${escapeHtml(post.contact)}</div>
-                            <div class="post-time">${formatTime(post.timestamp)}</div>
-                        </div>
-                    </div>
-                `;}).join('');
+        function formatTime(ts) {
+            const date = new Date(ts), now = new Date(), diff = now - date;
+            if (diff < 60000) return '刚刚';
+            if (diff < 3600000) return Math.floor(diff/60000) + '分钟前';
+            if (diff < 86400000) return Math.floor(diff/3600000) + '小时前';
+            if (diff < 2592000000) return Math.floor(diff/86400000) + '天前';
+            return date.toLocaleDateString('zh-CN');
         }
 
         function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+            if (!text) return '';
+            const d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
         }
 
-        document.getElementById('filterCategory').addEventListener('change', function(e) {
-            loadPosts(e.target.value);
-        });
+        // 将评论内容中的 @username 变成高亮
+        function renderMentions(content) {
+            return escapeHtml(content).replace(/@([a-zA-Z0-9_]+)/g, '<span class="at-mention">@$1</span>');
+        }
 
-        // 页面加载时检查登录状态并获取所有信息
-        checkLoginStatus();
-        loadPosts();
+        function renderPosts() {
+            const section = document.getElementById('postsSection');
+            if (!posts.length) { section.innerHTML = '<div class="empty-state">暂无信息</div>'; return; }
+            section.innerHTML = posts.map(post => {
+                if (post.images && post.images.length) postImagesMap[post.id] = post.images;
+                return `
+                <div class="post-card" id="post-card-${post.id}">
+                    <div class="post-header">
+                        <h3 class="post-title"><a href="/post/${post.id}">${escapeHtml(post.title)}</a></h3>
+                        <span class="post-category category-${post.category}">${post.category}</span>
+                    </div>
+                    <div class="post-author">发布者：<span>${escapeHtml(post.author || '匿名')}</span></div>
+                    <div class="post-content">${escapeHtml(post.content)}</div>
+                    ${post.price ? `<div class="post-price">¥ ${escapeHtml(post.price)}</div>` : ''}
+                    ${post.location ? `<div class="post-location">${escapeHtml(post.location)}</div>` : ''}
+                    ${post.images && post.images.length ? `
+                        <div class="post-images">
+                            ${post.images.map((img,i) => `<img src="/uploads/${img}" alt="图片" onclick="openLightbox(${post.id},${i})">`).join('')}
+                        </div>` : ''}
+                    <div class="post-footer">
+                        <div class="post-contact">📞 ${escapeHtml(post.contact)}</div>
+                        <div class="post-meta-row">
+                            <div class="post-time">${formatTime(post.timestamp)}</div>
+                            <a href="/post/${post.id}" class="detail-link">查看详情 →</a>
+                        </div>
+                    </div>
+                    <div class="comment-section">
+                        <button class="comment-toggle" onclick="toggleComments(${post.id})">💬 评论</button>
+                        <div class="comment-list" id="comments-${post.id}">
+                            <div class="comment-items" id="comment-items-${post.id}"></div>
+                            ${currentUser ? buildCommentForm(post.id, null) : '<p style="font-size:12px;color:#aaa;margin-top:8px;"><a href="/login" style="color:#667eea;">登录</a> 后发表评论</p>'}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function buildCommentForm(postId, parentId) {
+            const formId = parentId ? `form-${postId}-${parentId}` : `form-${postId}-root`;
+            return `
+            <div class="comment-form open" id="${formId}">
+                ${parentId ? `<div class="reply-hint" id="reply-hint-${postId}"></div>` : ''}
+                <div class="comment-input-wrap">
+                    <textarea class="comment-input" id="input-${formId}" placeholder="写评论，支持 @用户名..." rows="2"
+                        oninput="handleMentionInput(event,'${formId}')"
+                        onkeydown="handleCommentKey(event,'${postId}',${parentId || 'null'},'${formId}')"></textarea>
+                    <div class="mention-dropdown" id="mention-${formId}"></div>
+                </div>
+                <div class="comment-submit-row">
+                    <span></span>
+                    <button class="comment-submit-btn" onclick="submitComment(${postId},${parentId || 'null'},'${formId}')">发送</button>
+                </div>
+            </div>`;
+        }
+
+        async function toggleComments(postId) {
+            const list = document.getElementById('comments-' + postId);
+            list.classList.toggle('open');
+            if (list.classList.contains('open')) {
+                await loadComments(postId);
+            }
+        }
+
+        async function loadComments(postId) {
+            const res = await fetch('/api/posts/' + postId + '/comments');
+            const r = await res.json();
+            if (!r.success) return;
+            renderComments(postId, r.data);
+        }
+
+        function renderComments(postId, comments) {
+            const container = document.getElementById('comment-items-' + postId);
+            if (!comments.length) { container.innerHTML = '<div style="color:#bbb;font-size:12px;padding:4px 0;">暂无评论</div>'; return; }
+
+            // 构建树形结构
+            const map = {}, roots = [];
+            comments.forEach(c => { c.children = []; map[c.id] = c; });
+            comments.forEach(c => {
+                if (c.parent_id && map[c.parent_id]) map[c.parent_id].children.push(c);
+                else roots.push(c);
+            });
+
+            function renderNode(c, depth) {
+                const canDel = currentUser && (currentUser.id === c.user_id || currentUser.role === 'admin');
+                const replyUser = c.parent_id && map[c.parent_id] ? map[c.parent_id].username : null;
+                return `
+                <div class="comment-item" style="margin-left:${depth*16}px" id="comment-${c.id}">
+                    <span class="comment-username">@${escapeHtml(c.username || '匿名')}</span>
+                    ${replyUser ? `<span class="comment-reply-to">回复 <span class="mention">@${escapeHtml(replyUser)}</span>：</span>` : ''}
+                    <span class="comment-content">${renderMentions(c.content)}</span>
+                    <span class="comment-actions">
+                        ${currentUser ? `<button class="comment-reply-btn" onclick="startReply(${postId},${c.id},'${escapeHtml(c.username || '')}')">回复</button>` : ''}
+                        ${canDel ? `<button class="comment-del-btn" onclick="deleteComment(${postId},${c.id})">删除</button>` : ''}
+                    </span>
+                    <div class="comment-time">${formatTime(c.timestamp)}</div>
+                    <div id="reply-form-${c.id}"></div>
+                    ${c.children.map(child => renderNode(child, 0)).join('')}
+                </div>`;
+            }
+            container.innerHTML = roots.map(c => renderNode(c, 0)).join('');
+        }
+
+        // 回复某条评论
+        function startReply(postId, parentId, username) {
+            // 清除其他已打开的回复框
+            document.querySelectorAll('[id^="reply-form-"]').forEach(el => {
+                if (el.id !== 'reply-form-' + parentId) el.innerHTML = '';
+            });
+            const el = document.getElementById('reply-form-' + parentId);
+            if (!el) return;
+            if (el.innerHTML) { el.innerHTML = ''; return; } // 切换关闭
+            const formId = 'form-' + postId + '-' + parentId;
+            el.innerHTML = `
+            <div class="comment-form open" id="${formId}" style="margin-top:6px;">
+                <div style="font-size:12px;color:#888;margin-bottom:4px;">回复 <span style="color:#667eea;font-weight:600;">@${escapeHtml(username)}</span>
+                    <button class="comment-cancel-reply" onclick="document.getElementById('reply-form-${parentId}').innerHTML=''">取消</button>
+                </div>
+                <div class="comment-input-wrap">
+                    <textarea class="comment-input" id="input-${formId}" placeholder="回复 @${escapeHtml(username)}..." rows="2"
+                        oninput="handleMentionInput(event,'${formId}')"
+                        onkeydown="handleCommentKey(event,'${postId}',${parentId},'${formId}')"></textarea>
+                    <div class="mention-dropdown" id="mention-${formId}"></div>
+                </div>
+                <div class="comment-submit-row">
+                    <span></span>
+                    <button class="comment-submit-btn" onclick="submitComment(${postId},${parentId},'${formId}')">发送</button>
+                </div>
+            </div>`;
+            document.getElementById('input-' + formId).focus();
+        }
+
+        async function submitComment(postId, parentId, formId) {
+            if (!currentUser) { window.location.href = '/login'; return; }
+            const input = document.getElementById('input-' + formId);
+            const content = input.value.trim();
+            if (!content) return;
+            const btn = document.querySelector(`#${formId} .comment-submit-btn`);
+            btn.disabled = true; btn.textContent = '发送中...';
+            try {
+                const res = await fetch('/api/posts/' + postId + '/comments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content, parent_id: parentId || null })
+                });
+                const r = await res.json();
+                if (r.success) {
+                    input.value = '';
+                    if (parentId) {
+                        const el = document.getElementById('reply-form-' + parentId);
+                        if (el) el.innerHTML = '';
+                    }
+                    await loadComments(postId);
+                    // 更新评论按钮文字
+                    const toggle = document.querySelector(`#post-card-${postId} .comment-toggle`);
+                    if (toggle) toggle.textContent = '💬 评论';
+                } else { alert(r.message); }
+            } catch(e) { alert('发送失败'); }
+            finally { btn.disabled = false; btn.textContent = '发送'; }
+        }
+
+        async function deleteComment(postId, commentId) {
+            if (!confirm('确定删除这条评论？')) return;
+            const res = await fetch('/api/comments/' + commentId, { method: 'DELETE' });
+            const r = await res.json();
+            if (r.success) await loadComments(postId);
+            else alert(r.message);
+        }
+
+        function handleCommentKey(e, postId, parentId, formId) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitComment(postId, parentId, formId);
+            }
+        }
+
+        // @ 提示
+        let mentionTimer = null;
+        function handleMentionInput(e, formId) {
+            const input = e.target;
+            const val = input.value;
+            const pos = input.selectionStart;
+            const before = val.slice(0, pos);
+            const match = before.match(/@([a-zA-Z0-9_]*)$/);
+            const dropdown = document.getElementById('mention-' + formId);
+            if (!match) { dropdown.style.display = 'none'; return; }
+            const query = match[1];
+            clearTimeout(mentionTimer);
+            mentionTimer = setTimeout(async () => {
+                if (!query) { dropdown.style.display = 'none'; return; }
+                const res = await fetch('/api/users/search?q=' + encodeURIComponent(query));
+                const r = await res.json();
+                if (!r.data || !r.data.length) { dropdown.style.display = 'none'; return; }
+                dropdown.innerHTML = r.data.map(u =>
+                    `<div class="mention-item" onmousedown="insertMention(event,'${formId}','${escapeHtml(u)}')">${escapeHtml(u)}</div>`
+                ).join('');
+                dropdown.style.display = 'block';
+            }, 200);
+        }
+
+        function insertMention(e, formId, username) {
+            e.preventDefault();
+            const input = document.getElementById('input-' + formId);
+            const val = input.value, pos = input.selectionStart;
+            const before = val.slice(0, pos);
+            const after = val.slice(pos);
+            const newBefore = before.replace(/@([a-zA-Z0-9_]*)$/, '@' + username + ' ');
+            input.value = newBefore + after;
+            input.focus();
+            input.selectionStart = input.selectionEnd = newBefore.length;
+            document.getElementById('mention-' + formId).style.display = 'none';
+        }
+
+        document.getElementById('filterCategory').addEventListener('change', e => loadPosts(e.target.value));
+
+        checkLoginStatus().then(() => loadPosts());
     </script>
 </body>
 </html>

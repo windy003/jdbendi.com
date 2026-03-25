@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='180x180.png') }}">
+    <title>帖子详情 - 建德本地</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container { max-width: 680px; margin: 0 auto; padding: 15px; }
+        .top-bar {
+            background: white; border-radius: 12px; padding: 12px 16px;
+            margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .back-link { color: #667eea; text-decoration: none; font-size: 14px; font-weight: 600; }
+        .top-right { font-size: 14px; }
+        .top-right a { color: #667eea; text-decoration: none; margin-left: 12px; font-weight: 600; }
+
+        .post-card {
+            background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 15px;
+        }
+        .post-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+        .post-title { font-size: 22px; font-weight: 700; color: #333; flex: 1; line-height: 1.4; }
+        .post-category {
+            display: inline-block; padding: 4px 12px; border-radius: 12px;
+            font-size: 12px; font-weight: 600; color: white; margin-left: 10px; flex-shrink: 0;
+        }
+        .category-出售 { background: #4CAF50; }
+        .category-求购 { background: #2196F3; }
+        .category-招聘 { background: #FF9800; }
+        .category-出租房屋 { background: #00BCD4; }
+        .category-出售房屋 { background: #E91E63; }
+        .category-其他 { background: #607D8B; }
+        .category-找对象 { background: #E91E63; }
+        .post-meta { font-size: 12px; color: #888; margin-bottom: 12px; }
+        .post-meta span { color: #667eea; font-weight: 600; }
+        .post-content { color: #444; line-height: 1.8; font-size: 15px; white-space: pre-wrap; margin-bottom: 14px; }
+        .post-price { font-size: 22px; font-weight: 700; color: #E91E63; margin-bottom: 10px; }
+        .post-location {
+            display: inline-block; padding: 4px 12px; border-radius: 12px;
+            font-size: 12px; font-weight: 600; color: white; background: #9C27B0; margin-bottom: 10px;
+        }
+        .post-images { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+        .post-images img { width: 100%; height: 110px; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.2s; }
+        .post-images img:hover { transform: scale(1.03); }
+        .post-contact-box {
+            background: #f5f7ff; border-radius: 8px; padding: 12px 16px;
+            font-size: 15px; color: #667eea; font-weight: 600; margin-top: 12px;
+        }
+        .post-time { font-size: 12px; color: #aaa; margin-top: 8px; }
+
+        /* 评论区 */
+        .comment-section { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .comment-section h3 { font-size: 16px; color: #333; margin-bottom: 16px; }
+        .comment-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        .comment-item:last-of-type { border-bottom: none; }
+        .comment-username { color: #667eea; font-weight: 600; margin-right: 4px; }
+        .comment-reply-to { color: #aaa; margin-right: 4px; }
+        .comment-reply-to .mention { color: #667eea; }
+        .comment-content { color: #444; line-height: 1.6; }
+        .comment-content .at-mention { color: #667eea; font-weight: 600; }
+        .comment-time { color: #bbb; font-size: 12px; margin-top: 4px; }
+        .comment-actions { display: inline; margin-left: 8px; }
+        .comment-reply-btn, .comment-del-btn {
+            background: none; border: none; font-size: 12px; cursor: pointer; padding: 0 4px;
+        }
+        .comment-reply-btn { color: #667eea; }
+        .comment-del-btn { color: #f44336; }
+        .no-comments { color: #bbb; font-size: 14px; text-align: center; padding: 20px 0; }
+
+        /* 评论输入框 */
+        .comment-form { margin-top: 16px; }
+        .comment-input-wrap { position: relative; }
+        .comment-input {
+            width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0;
+            border-radius: 10px; font-size: 14px; resize: none; min-height: 80px;
+            font-family: inherit; transition: border-color 0.2s;
+        }
+        .comment-input:focus { outline: none; border-color: #667eea; }
+        .comment-submit-row { display: flex; justify-content: flex-end; margin-top: 8px; }
+        .comment-submit-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border: none; border-radius: 8px; padding: 8px 20px;
+            font-size: 14px; cursor: pointer; font-weight: 600;
+        }
+        .comment-submit-btn:disabled { opacity: 0.6; }
+        .reply-hint-bar {
+            background: #f0f0ff; border-radius: 6px; padding: 6px 12px;
+            font-size: 12px; color: #888; margin-bottom: 8px; display: none;
+        }
+        .reply-hint-bar.show { display: flex; justify-content: space-between; align-items: center; }
+        .cancel-reply-btn { background: none; border: none; color: #aaa; cursor: pointer; font-size: 12px; }
+        /* @ 提示 */
+        .mention-dropdown {
+            position: absolute; background: white; border: 1px solid #ddd;
+            border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 100; min-width: 150px; display: none;
+        }
+        .mention-item { padding: 8px 14px; cursor: pointer; font-size: 13px; }
+        .mention-item:hover { background: #f0f0ff; color: #667eea; }
+
+        /* Lightbox */
+        #lightbox {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 9999; flex-direction: column;
+            align-items: center; justify-content: center;
+        }
+        #lightbox.active { display: flex; }
+        #lightboxImg { max-width: 95%; max-height: 80vh; object-fit: contain; border-radius: 8px; }
+        #lightboxClose {
+            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.2);
+            border: none; color: white; font-size: 22px; width: 42px; height: 42px;
+            border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        #lightboxCounter {
+            position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+            color: white; font-size: 14px; background: rgba(0,0,0,0.4); padding: 4px 12px; border-radius: 12px;
+        }
+        .lb-nav {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            background: rgba(255,255,255,0.2); border: none; color: white; font-size: 32px;
+            width: 48px; height: 48px; border-radius: 50%; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #lbPrev { left: 8px; } #lbNext { right: 8px; }
+
+        @media (min-width: 768px) {
+            .container { padding: 20px; }
+            .post-images img { height: 140px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top-bar">
+            <a href="/" class="back-link">← 返回首页</a>
+            <div class="top-right" id="topRight"></div>
+        </div>
+
+        <div id="postContainer"><div style="text-align:center;color:white;padding:40px;">加载中...</div></div>
+
+        <div class="comment-section" id="commentSection" style="display:none;">
+            <h3>💬 评论区</h3>
+            <div id="commentList"></div>
+
+            <div class="comment-form" id="commentFormArea"></div>
+        </div>
+    </div>
+
+    <!-- Lightbox -->
+    <div id="lightbox">
+        <button id="lightboxClose" onclick="closeLightbox()">✕</button>
+        <div id="lightboxCounter"></div>
+        <button class="lb-nav" id="lbPrev" onclick="lbNav(-1)">&#8249;</button>
+        <img id="lightboxImg" alt="">
+        <button class="lb-nav" id="lbNext" onclick="lbNav(1)">&#8250;</button>
+    </div>
+
+    <script>
+        const POST_ID = {{ post_id }};
+        let currentUser = null;
+        let postData = null;
+        let comments = [];
+        let commentMap = {};
+        let replyTo = null; // { id, username }
+        let lbImages = [], lbIdx = 0;
+
+        function escapeHtml(t) {
+            if (!t) return '';
+            const d = document.createElement('div'); d.textContent = t; return d.innerHTML;
+        }
+        function renderMentions(content) {
+            return escapeHtml(content).replace(/@([a-zA-Z0-9_]+)/g, '<span class="at-mention">@$1</span>');
+        }
+        function formatTime(ts) {
+            const date = new Date(ts), now = new Date(), diff = now - date;
+            if (diff < 60000) return '刚刚';
+            if (diff < 3600000) return Math.floor(diff/60000) + '分钟前';
+            if (diff < 86400000) return Math.floor(diff/3600000) + '小时前';
+            if (diff < 2592000000) return Math.floor(diff/86400000) + '天前';
+            return date.toLocaleDateString('zh-CN');
+        }
+
+        // Lightbox
+        function openLightbox(idx) {
+            lbIdx = idx;
+            document.getElementById('lightbox').classList.add('active');
+            document.body.style.overflow = 'hidden';
+            updateLb();
+        }
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+        function updateLb() {
+            document.getElementById('lightboxImg').src = '/uploads/' + lbImages[lbIdx];
+            const has = lbImages.length > 1;
+            document.getElementById('lightboxCounter').textContent = has ? (lbIdx+1)+' / '+lbImages.length : '';
+            document.getElementById('lightboxCounter').style.display = has ? 'block' : 'none';
+            document.getElementById('lbPrev').style.display = has ? 'flex' : 'none';
+            document.getElementById('lbNext').style.display = has ? 'flex' : 'none';
+        }
+        function lbNav(dir) { lbIdx = (lbIdx + dir + lbImages.length) % lbImages.length; updateLb(); }
+        document.getElementById('lightbox').addEventListener('click', e => { if (e.target.id==='lightbox') closeLightbox(); });
+        document.addEventListener('keydown', e => {
+            if (!document.getElementById('lightbox').classList.contains('active')) return;
+            if (e.key==='ArrowLeft') lbNav(-1); else if (e.key==='ArrowRight') lbNav(1); else if (e.key==='Escape') closeLightbox();
+        });
+
+        async function init() {
+            await checkLogin();
+            await loadPost();
+            await loadComments();
+        }
+
+        async function checkLogin() {
+            try {
+                const res = await fetch('/api/check_login');
+                const r = await res.json();
+                if (r.logged_in) currentUser = r.user;
+                renderTopRight();
+            } catch(e) {}
+        }
+
+        function renderTopRight() {
+            const el = document.getElementById('topRight');
+            if (currentUser) {
+                const link = currentUser.role === 'admin'
+                    ? '<a href="/admin">管理后台</a>'
+                    : '<a href="/user_center">个人中心</a>';
+                el.innerHTML = `<span style="color:#667eea;font-weight:600;">${escapeHtml(currentUser.username)}</span> | ${link}`;
+            } else {
+                el.innerHTML = '<a href="/login">登录</a> | <a href="/register">注册</a>';
+            }
+        }
+
+        async function loadPost() {
+            const res = await fetch('/api/posts/' + POST_ID);
+            const r = await res.json();
+            if (!r.success) {
+                document.getElementById('postContainer').innerHTML = '<div style="text-align:center;color:white;padding:40px;">帖子不存在或已删除</div>';
+                return;
+            }
+            postData = r.data;
+            lbImages = postData.images || [];
+            renderPost();
+        }
+
+        function renderPost() {
+            const p = postData;
+            document.title = escapeHtml(p.title) + ' - 建德本地';
+            document.getElementById('postContainer').innerHTML = `
+            <div class="post-card">
+                <div class="post-header">
+                    <h1 class="post-title">${escapeHtml(p.title)}</h1>
+                    <span class="post-category category-${p.category}">${p.category}</span>
+                </div>
+                <div class="post-meta">发布者：<span>${escapeHtml(p.author || '匿名')}</span> &nbsp;·&nbsp; ${formatTime(p.timestamp)}</div>
+                <div class="post-content">${escapeHtml(p.content)}</div>
+                ${p.price ? `<div class="post-price">¥ ${escapeHtml(p.price)}</div>` : ''}
+                ${p.location ? `<div class="post-location">${escapeHtml(p.location)}</div>` : ''}
+                ${lbImages.length ? `
+                    <div class="post-images">
+                        ${lbImages.map((img,i) => `<img src="/uploads/${img}" alt="图片" onclick="openLightbox(${i})">`).join('')}
+                    </div>` : ''}
+                <div class="post-contact-box">📞 联系方式：${escapeHtml(p.contact)}</div>
+            </div>`;
+            document.getElementById('commentSection').style.display = 'block';
+            renderCommentForm();
+        }
+
+        async function loadComments() {
+            const res = await fetch('/api/posts/' + POST_ID + '/comments');
+            const r = await res.json();
+            if (!r.success) return;
+            comments = r.data;
+            commentMap = {};
+            comments.forEach(c => { commentMap[c.id] = c; c.children = []; });
+            const roots = [];
+            comments.forEach(c => {
+                if (c.parent_id && commentMap[c.parent_id]) commentMap[c.parent_id].children.push(c);
+                else roots.push(c);
+            });
+            renderCommentList(roots);
+        }
+
+        function renderCommentList(roots) {
+            const el = document.getElementById('commentList');
+            if (!roots.length) { el.innerHTML = '<div class="no-comments">暂无评论，来发表第一条吧</div>'; return; }
+            function renderNode(c, depth) {
+                const canDel = currentUser && (currentUser.id === c.user_id || currentUser.role === 'admin');
+                const replyUser = c.parent_id && commentMap[c.parent_id] ? commentMap[c.parent_id].username : null;
+                return `
+                <div class="comment-item" style="margin-left:${Math.min(depth,3)*20}px" id="ci-${c.id}">
+                    <span class="comment-username">@${escapeHtml(c.username||'匿名')}</span>
+                    ${replyUser ? `<span class="comment-reply-to">回复 <span class="mention">@${escapeHtml(replyUser)}</span>：</span>` : ''}
+                    <span class="comment-content">${renderMentions(c.content)}</span>
+                    <span class="comment-actions">
+                        ${currentUser ? `<button class="comment-reply-btn" onclick="setReply(${c.id},'${escapeHtml(c.username||'')}')">回复</button>` : ''}
+                        ${canDel ? `<button class="comment-del-btn" onclick="delComment(${c.id})">删除</button>` : ''}
+                    </span>
+                    <div class="comment-time">${formatTime(c.timestamp)}</div>
+                    ${c.children.map(child => renderNode(child, depth+1)).join('')}
+                </div>`;
+            }
+            el.innerHTML = roots.map(c => renderNode(c, 0)).join('');
+        }
+
+        function renderCommentForm() {
+            const area = document.getElementById('commentFormArea');
+            if (!currentUser) {
+                area.innerHTML = '<p style="text-align:center;color:#aaa;font-size:14px;margin-top:10px;"><a href="/login" style="color:#667eea;">登录</a> 后发表评论</p>';
+                return;
+            }
+            area.innerHTML = `
+            <div class="reply-hint-bar" id="replyHintBar">
+                <span id="replyHintText"></span>
+                <button class="cancel-reply-btn" onclick="cancelReply()">取消回复 ✕</button>
+            </div>
+            <div class="comment-input-wrap">
+                <textarea class="comment-input" id="mainInput" placeholder="写评论，支持 @用户名..." rows="3"
+                    oninput="handleMentionInput(event)"
+                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitMain();}"></textarea>
+                <div class="mention-dropdown" id="mainMentionDropdown"></div>
+            </div>
+            <div class="comment-submit-row">
+                <button class="comment-submit-btn" id="mainSubmitBtn" onclick="submitMain()">发表评论</button>
+            </div>`;
+        }
+
+        function setReply(commentId, username) {
+            replyTo = { id: commentId, username };
+            const bar = document.getElementById('replyHintBar');
+            if (bar) {
+                bar.classList.add('show');
+                document.getElementById('replyHintText').innerHTML = '回复 <strong style="color:#667eea;">@' + escapeHtml(username) + '</strong>';
+            }
+            const input = document.getElementById('mainInput');
+            if (input) { input.focus(); input.placeholder = '回复 @' + username + '...'; }
+            // 滚动到评论框
+            document.getElementById('commentFormArea').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function cancelReply() {
+            replyTo = null;
+            const bar = document.getElementById('replyHintBar');
+            if (bar) bar.classList.remove('show');
+            const input = document.getElementById('mainInput');
+            if (input) { input.placeholder = '写评论，支持 @用户名...'; input.focus(); }
+        }
+
+        async function submitMain() {
+            if (!currentUser) { window.location.href = '/login'; return; }
+            const input = document.getElementById('mainInput');
+            const content = input.value.trim();
+            if (!content) return;
+            const btn = document.getElementById('mainSubmitBtn');
+            btn.disabled = true; btn.textContent = '发送中...';
+            try {
+                const res = await fetch('/api/posts/' + POST_ID + '/comments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content, parent_id: replyTo ? replyTo.id : null })
+                });
+                const r = await res.json();
+                if (r.success) {
+                    input.value = '';
+                    cancelReply();
+                    await loadComments();
+                } else { alert(r.message); }
+            } catch(e) { alert('发送失败，请检查网络'); }
+            finally { btn.disabled = false; btn.textContent = '发表评论'; }
+        }
+
+        async function delComment(commentId) {
+            if (!confirm('确定删除这条评论？')) return;
+            const res = await fetch('/api/comments/' + commentId, { method: 'DELETE' });
+            const r = await res.json();
+            if (r.success) await loadComments();
+            else alert(r.message);
+        }
+
+        // @ 提示
+        let mentionTimer = null;
+        function handleMentionInput(e) {
+            const input = e.target, val = input.value, pos = input.selectionStart;
+            const before = val.slice(0, pos);
+            const match = before.match(/@([a-zA-Z0-9_]*)$/);
+            const dropdown = document.getElementById('mainMentionDropdown');
+            if (!match) { dropdown.style.display = 'none'; return; }
+            const query = match[1];
+            clearTimeout(mentionTimer);
+            mentionTimer = setTimeout(async () => {
+                if (!query) { dropdown.style.display = 'none'; return; }
+                const res = await fetch('/api/users/search?q=' + encodeURIComponent(query));
+                const r = await res.json();
+                if (!r.data || !r.data.length) { dropdown.style.display = 'none'; return; }
+                dropdown.innerHTML = r.data.map(u =>
+                    `<div class="mention-item" onmousedown="insertMentionMain(event,'${escapeHtml(u)}')">${escapeHtml(u)}</div>`
+                ).join('');
+                dropdown.style.display = 'block';
+            }, 200);
+        }
+
+        function insertMentionMain(e, username) {
+            e.preventDefault();
+            const input = document.getElementById('mainInput');
+            const val = input.value, pos = input.selectionStart;
+            const before = val.slice(0, pos), after = val.slice(pos);
+            const newBefore = before.replace(/@([a-zA-Z0-9_]*)$/, '@' + username + ' ');
+            input.value = newBefore + after;
+            input.focus();
+            input.selectionStart = input.selectionEnd = newBefore.length;
+            document.getElementById('mainMentionDropdown').style.display = 'none';
+        }
+
+        init();
+    </script>
+</body>
+</html>
