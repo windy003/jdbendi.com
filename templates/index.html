@@ -90,6 +90,13 @@
             background: none; border: none; color: #667eea; font-size: 13px;
             cursor: pointer; padding: 4px 0; font-weight: 600;
         }
+        .comment-count-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            background: #f44336; color: white; border-radius: 10px;
+            min-width: 16px; height: 16px; font-size: 10px; font-weight: 700;
+            padding: 0 4px;
+            position: relative; top: -6px; margin-left: -2px;
+        }
         .comment-list { margin-top: 8px; display: none; }
         .comment-list.open { display: block; }
         .comment-item { padding: 8px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px; }
@@ -256,13 +263,60 @@
             else if (e.key === 'Escape') closeLightbox();
         });
 
+        let unreadCount = 0;
+        let sseSource = null;
+
         async function checkLoginStatus() {
             try {
                 const res = await fetch('/api/check_login');
                 const r = await res.json();
-                if (r.logged_in) { currentUser = r.user; updateNavBar(true, r.user); }
-                else { currentUser = null; updateNavBar(false, null); }
+                if (r.logged_in) {
+                    currentUser = r.user;
+                    updateNavBar(true, r.user);
+                    // 先拿未读数（普通请求），完成后再建 SSE 长连接
+                    await fetchUnreadCount();
+                    startSSE();
+                } else {
+                    currentUser = null;
+                    updateNavBar(false, null);
+                }
             } catch(e) { updateNavBar(false, null); }
+        }
+
+        async function fetchUnreadCount() {
+            try {
+                const res = await fetch('/api/notifications/unread_count');
+                const r = await res.json();
+                if (r.success) { unreadCount = r.count; updateBadge(); }
+            } catch(e) {}
+        }
+
+        function updateBadge() {
+            const badge = document.getElementById('notifBadge');
+            if (!badge) return;
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                badge.style.display = 'inline-flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        function startSSE() {
+            if (sseSource) sseSource.close();
+            sseSource = new EventSource('/api/notifications/stream');
+            sseSource.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.type === 'new_notification') {
+                    unreadCount++;
+                    updateBadge();
+                }
+            };
+            sseSource.onerror = () => {
+                // 断线后 30 秒重连
+                sseSource.close();
+                setTimeout(() => { if (currentUser) startSSE(); }, 30000);
+            };
         }
 
         function updateNavBar(isLoggedIn, user) {
@@ -270,7 +324,7 @@
             if (isLoggedIn && user) {
                 const centerLink = user.role === 'admin'
                     ? '<a href="/admin" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">管理后台</a>'
-                    : '<a href="/user_center" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">个人中心</a>';
+                    : `<a href="/user_center" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;position:relative;">个人中心<span id="notifBadge" style="position:absolute;top:-8px;right:-10px;background:#f44336;color:white;border-radius:50%;min-width:16px;height:16px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px;"></span></a>`;
                 nav.innerHTML = `
                     <span style="color:#667eea;font-weight:600;">欢迎, ${escapeHtml(user.username)}</span> |
                     ${centerLink} |
@@ -285,6 +339,7 @@
         }
 
         async function logout() {
+            if (sseSource) { sseSource.close(); sseSource = null; }
             await fetch('/api/logout', { method: 'POST' });
             currentUser = null;
             updateNavBar(false, null);
@@ -346,7 +401,7 @@
                         </div>
                     </div>
                     <div class="comment-section">
-                        <button class="comment-toggle" onclick="toggleComments(${post.id})">💬 评论</button>
+                        <button class="comment-toggle" id="toggle-${post.id}" onclick="toggleComments(${post.id})">💬 评论${post.comment_count > 0 ? ` <span class="comment-count-badge">${post.comment_count}</span>` : ''}</button>
                         <div class="comment-list" id="comments-${post.id}">
                             <div class="comment-items" id="comment-items-${post.id}"></div>
                             ${currentUser ? buildCommentForm(post.id, null) : '<p style="font-size:12px;color:#aaa;margin-top:8px;"><a href="/login" style="color:#667eea;">登录</a> 后发表评论</p>'}
@@ -471,9 +526,7 @@
                         if (el) el.innerHTML = '';
                     }
                     await loadComments(postId);
-                    // 更新评论按钮文字
-                    const toggle = document.querySelector(`#post-card-${postId} .comment-toggle`);
-                    if (toggle) toggle.textContent = '💬 评论';
+                    updateCommentToggle(postId);
                 } else { alert(r.message); }
             } catch(e) { alert('发送失败'); }
             finally { btn.disabled = false; btn.textContent = '发送'; }
@@ -483,8 +536,18 @@
             if (!confirm('确定删除这条评论？')) return;
             const res = await fetch('/api/comments/' + commentId, { method: 'DELETE' });
             const r = await res.json();
-            if (r.success) await loadComments(postId);
+            if (r.success) { await loadComments(postId); updateCommentToggle(postId); }
             else alert(r.message);
+        }
+
+        function updateCommentToggle(postId) {
+            const items = document.querySelectorAll(`#comment-items-${postId} .comment-item`);
+            const count = items.length;
+            const toggle = document.getElementById('toggle-' + postId);
+            if (!toggle) return;
+            toggle.innerHTML = count > 0
+                ? `💬 评论 <span class="comment-count-badge">${count}</span>`
+                : '💬 评论';
         }
 
         function handleCommentKey(e, postId, parentId, formId) {

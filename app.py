@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, send_from_directory
+from flask import Flask, render_template, request, jsonify, session, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 import uuid
 import time
 import re
+import threading
+import queue
 
 # 加载环境变量
 load_dotenv()
@@ -28,6 +30,36 @@ CORS(app, resources={
         "allow_headers": ["Content-Type"]
     }
 })
+
+# ========== SSE 实时推送注册表 ==========
+# user_id -> list of Queue，每个 SSE 连接一个队列
+_sse_clients: dict[int, list[queue.Queue]] = {}
+_sse_lock = threading.Lock()
+
+def _sse_subscribe(user_id: int) -> queue.Queue:
+    q: queue.Queue = queue.Queue(maxsize=20)
+    with _sse_lock:
+        _sse_clients.setdefault(user_id, []).append(q)
+    return q
+
+def _sse_unsubscribe(user_id: int, q: queue.Queue):
+    with _sse_lock:
+        clients = _sse_clients.get(user_id, [])
+        try:
+            clients.remove(q)
+        except ValueError:
+            pass
+
+def sse_push(user_id: int, data: dict):
+    """向指定用户的所有 SSE 连接推送消息"""
+    with _sse_lock:
+        clients = list(_sse_clients.get(user_id, []))
+    for q in clients:
+        try:
+            q.put_nowait(data)
+        except queue.Full:
+            pass  # 队列满则丢弃，不阻塞主线程
+# ================================================
 
 # ========== 配置区域（从环境变量读取，保护敏感信息） ==========
 # 账号密码（使用哈希加密存储）
@@ -332,13 +364,15 @@ def get_posts():
 
     if category != '全部':
         cursor.execute('''
-            SELECT p.*, u.username as author
+            SELECT p.*, u.username as author,
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
             FROM posts p LEFT JOIN users u ON p.user_id = u.id
             WHERE p.category = ? ORDER BY p.timestamp DESC
         ''', (category,))
     else:
         cursor.execute('''
-            SELECT p.*, u.username as author
+            SELECT p.*, u.username as author,
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
             FROM posts p LEFT JOIN users u ON p.user_id = u.id
             ORDER BY p.timestamp DESC
         ''')
@@ -356,7 +390,8 @@ def get_posts():
             'price': row['price'] if 'price' in row.keys() else None,
             'location': row['location'] if 'location' in row.keys() else None,
             'author': row['author'] if 'author' in row.keys() else None,
-            'user_id': row['user_id']
+            'user_id': row['user_id'],
+            'comment_count': row['comment_count'] if 'comment_count' in row.keys() else 0
         }
         posts.append(post)
 
@@ -855,7 +890,7 @@ def cleanup_notifications(cursor, user_id):
     ''', (user_id, user_id, NOTIF_MAX_PER_USER))
 
 def send_notification(cursor, user_id, ntype, post_id, comment_id, from_user_id, content):
-    """发送通知（不重复通知自己）"""
+    """发送通知（不重复通知自己），并记录待推送目标"""
     if user_id == from_user_id:
         return
     cursor.execute('''
@@ -863,6 +898,13 @@ def send_notification(cursor, user_id, ntype, post_id, comment_id, from_user_id,
         VALUES (?, ?, ?, ?, ?, ?, 0, ?)
     ''', (user_id, ntype, post_id, comment_id, from_user_id, content, int(time.time() * 1000)))
     cleanup_notifications(cursor, user_id)
+    # 记录到线程本地，等 commit 后再推送（避免推送时数据还未落库）
+    if not hasattr(_pending_sse, 'targets'):
+        _pending_sse.targets = []
+    _pending_sse.targets.append(user_id)
+
+# 线程本地存储，用于收集本次请求需要推送的用户
+_pending_sse = threading.local()
 
 # API：获取某帖子的评论
 @app.route('/api/posts/<int:post_id>/comments', methods=['GET'])
@@ -952,6 +994,12 @@ def create_comment(post_id):
 
     conn.commit()
 
+    # commit 后推送 SSE（数据已落库，前端此时拉取通知一定能拿到）
+    targets = getattr(_pending_sse, 'targets', [])
+    for uid in targets:
+        sse_push(uid, {'type': 'new_notification'})
+    _pending_sse.targets = []
+
     # 返回完整评论对象
     cursor.execute('''
         SELECT c.id, c.post_id, c.user_id, c.parent_id, c.content, c.timestamp, u.username
@@ -1038,6 +1086,38 @@ def read_all_notifications():
     conn.close()
     return jsonify({'success': True})
 
+# API：SSE 实时通知流（需要登录）
+@app.route('/api/notifications/stream')
+def notification_stream():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+
+    user_id = session.get('user_id')
+    q = _sse_subscribe(user_id)
+
+    @stream_with_context
+    def generate():
+        # 首次连接立即发一次心跳，让浏览器确认连接成功
+        yield 'data: {"type":"connected"}\n\n'
+        try:
+            while True:
+                try:
+                    data = q.get(timeout=25)
+                    yield f'data: {json.dumps(data, ensure_ascii=False)}\n\n'
+                except queue.Empty:
+                    # 25 秒无消息发心跳，防止代理/浏览器断开连接
+                    yield 'data: {"type":"heartbeat"}\n\n'
+        except GeneratorExit:
+            pass
+        finally:
+            _sse_unsubscribe(user_id, q)
+
+    resp = Response(generate(), mimetype='text/event-stream')
+    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers['X-Accel-Buffering'] = 'no'   # 关闭 Nginx 缓冲
+    resp.headers['Connection'] = 'keep-alive'
+    return resp
+
 # API：搜索用户名（用于 @ 提示）
 @app.route('/api/users/search', methods=['GET'])
 def search_users():
@@ -1064,4 +1144,4 @@ if __name__ == '__main__':
     # 初始化数据库
     init_db()
 
-    app.run(debug=True, host='0.0.0.0', port=5002)
+    app.run(debug=True, host='0.0.0.0', port=5002, threaded=True)

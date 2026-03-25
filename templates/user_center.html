@@ -424,11 +424,13 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/compressorjs@1.1.1/dist/compressor.min.js"></script>
+    <script src="{{ url_for('static', filename='compressor.min.js') }}"></script>
     <script>
         let posts = [];
         let uploadedImages = [];
         let currentUser = null;
+
+        let sseSource = null;
 
         // 页面加载时检查登录状态
         checkLoginStatus();
@@ -445,8 +447,14 @@
 
                 currentUser = result.user;
                 document.getElementById('userInfo').textContent = `欢迎，${currentUser.username}`;
-                loadMyPosts();
-                loadNotifications();
+
+                // 立即显示空占位，避免"加载中"长时间展示
+                document.getElementById('notifList').innerHTML = '<div class="notif-empty">暂无通知</div>';
+
+                // 并行加载数据，全部完成后再建立 SSE 长连接
+                // （SSE 占用一个 HTTP 连接槽，必须等数据请求先完成）
+                await Promise.all([loadMyPosts(), loadNotifications()]);
+                startSSE();
             } catch (error) {
                 window.location.href = '/login';
             }
@@ -501,10 +509,27 @@
             loadNotifications();
         }
 
+        function startSSE() {
+            if (sseSource) sseSource.close();
+            sseSource = new EventSource('/api/notifications/stream');
+            sseSource.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.type === 'new_notification') {
+                    // 有新通知：刷新通知列表（红点由 renderNotifications 更新）
+                    loadNotifications();
+                }
+            };
+            sseSource.onerror = () => {
+                sseSource.close();
+                setTimeout(() => { if (currentUser) startSSE(); }, 30000);
+            };
+        }
+
         // 退出登录
         async function logout() {
             if (confirm('确定要退出登录吗？')) {
                 try {
+                    if (sseSource) { sseSource.close(); sseSource = null; }
                     await fetch('/api/logout', { method: 'POST' });
                     window.location.href = '/';
                 } catch (error) {
