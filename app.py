@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request, jsonify, session, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
 from functools import wraps
 import json
 import os
@@ -13,6 +12,8 @@ import time
 import re
 import threading
 import queue
+import boto3
+from botocore.client import Config
 
 # 加载环境变量
 load_dotenv()
@@ -70,12 +71,20 @@ ADMIN_PASSWORD_HASH = generate_password_hash(admin_password)
 # 站长联系方式
 ADMIN_CONTACT = os.getenv('ADMIN_CONTACT', "周秋良:手机:15868404601,微信同号")
 
-# 图片上传配置
-UPLOAD_FOLDER = 'uploads'
+# 媒体上传配置
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'mov', 'avi', 'webm', 'mkv'}
+ALLOWED_ALL_MEDIA = ALLOWED_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS
 MAX_IMAGES = 9  # 每条信息最多上传9张图片
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制16MB
+MAX_VIDEOS = 3  # 每条信息最多上传3个视频
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 限制500MB（支持视频）
+
+# Cloudflare R2 配置
+R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '')
+R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '')
+R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '')
+R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', '')
+R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL', '')  # 例如: https://files.jdbendi.com
 # ========================================================
 
 # 数据库文件路径
@@ -99,7 +108,7 @@ def init_db():
             category TEXT NOT NULL,
             title TEXT NOT NULL,
             content TEXT NOT NULL,
-            contact TEXT NOT NULL,
+            contact TEXT,
             images TEXT,
             timestamp INTEGER NOT NULL,
             price TEXT,
@@ -178,12 +187,30 @@ def init_db():
         )
     ''')
 
+    # 创建私信表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_user_id INTEGER NOT NULL,
+            to_user_id INTEGER NOT NULL,
+            content TEXT,
+            content_type TEXT NOT NULL DEFAULT 'text',
+            media_url TEXT,
+            timestamp INTEGER NOT NULL,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (from_user_id) REFERENCES users(id),
+            FOREIGN KEY (to_user_id) REFERENCES users(id)
+        )
+    ''')
+
     # 创建索引
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_username ON users(username)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_role ON users(role)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_status ON users(status)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_users ON messages(from_user_id, to_user_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_to ON messages(to_user_id)')
 
     conn.commit()
     conn.close()
@@ -270,8 +297,89 @@ def authenticate_user(username, password):
     }, None
 
 def allowed_file(filename):
-    """检查文件扩展名是否允许"""
+    """检查图片文件扩展名是否允许"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def allowed_media(filename):
+    """检查图片或视频扩展名是否允许"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_ALL_MEDIA
+
+def get_content_type(ext):
+    """根据扩展名获取 MIME 类型"""
+    types = {
+        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+        'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp',
+        'mp4': 'video/mp4', 'mov': 'video/quicktime',
+        'avi': 'video/x-msvideo', 'webm': 'video/webm', 'mkv': 'video/x-matroska'
+    }
+    return types.get(ext.lower(), 'application/octet-stream')
+
+# ========== Cloudflare R2 辅助函数 ==========
+def get_r2_client():
+    """获取 Cloudflare R2 S3 兼容客户端"""
+    return boto3.client(
+        's3',
+        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        config=Config(signature_version='s3v4'),
+        region_name='auto'
+    )
+
+def upload_to_r2(file_data, filename, content_type):
+    """上传文件到 R2，返回公开 URL"""
+    r2 = get_r2_client()
+    r2.put_object(
+        Bucket=R2_BUCKET_NAME,
+        Key=filename,
+        Body=file_data,
+        ContentType=content_type
+    )
+    return f"{R2_PUBLIC_URL}/{filename}"
+
+def delete_from_r2(key):
+    """从 R2 删除指定 key 的文件"""
+    try:
+        r2 = get_r2_client()
+        r2.delete_object(Bucket=R2_BUCKET_NAME, Key=key)
+    except Exception as e:
+        print(f"R2 删除失败: {e}")
+
+def delete_media(url):
+    """从 R2 删除媒体文件（通过 URL 提取 key）"""
+    if not url or not url.startswith('http'):
+        return
+    key = url.split('/')[-1].split('?')[0]
+    delete_from_r2(key)
+
+def setup_r2_cors():
+    """启动时自动为 R2 存储桶配置 CORS，允许网站直传"""
+    try:
+        site_origin = R2_PUBLIC_URL.rsplit('/', 1)[0] if '/' in R2_PUBLIC_URL.replace('https://', '').replace('http://', '') else R2_PUBLIC_URL
+        # 取主站域名（从 PUBLIC_URL 推导，或直接加常见来源）
+        origins = [
+            'https://jdbendi.com',
+            'https://www.jdbendi.com',
+            'http://localhost:5002',
+            'http://127.0.0.1:5002',
+        ]
+        r2 = get_r2_client()
+        r2.put_bucket_cors(
+            Bucket=R2_BUCKET_NAME,
+            CORSConfiguration={
+                'CORSRules': [{
+                    'AllowedOrigins': origins,
+                    'AllowedMethods': ['GET', 'PUT', 'HEAD'],
+                    'AllowedHeaders': ['*'],
+                    'ExposeHeaders': ['ETag'],
+                    'MaxAgeSeconds': 86400
+                }]
+            }
+        )
+        print('R2 CORS 配置成功')
+    except Exception as e:
+        print(f'R2 CORS 配置失败（不影响运行）: {e}')
+# ============================================
 
 # 权限装饰器
 def login_required(f):
@@ -386,6 +494,7 @@ def get_posts():
             'content': row['content'],
             'contact': row['contact'],
             'images': json.loads(row['images']) if row['images'] else [],
+            'videos': json.loads(row['videos']) if row['videos'] else [],
             'timestamp': row['timestamp'],
             'price': row['price'] if 'price' in row.keys() else None,
             'location': row['location'] if 'location' in row.keys() else None,
@@ -419,6 +528,7 @@ def get_post(post_id):
         'content': row['content'],
         'contact': row['contact'],
         'images': json.loads(row['images']) if row['images'] else [],
+        'videos': json.loads(row['videos']) if row['videos'] else [],
         'timestamp': row['timestamp'],
         'price': row['price'] if 'price' in row.keys() else None,
         'location': row['location'] if 'location' in row.keys() else None,
@@ -521,16 +631,18 @@ def create_post():
     cursor = conn.cursor()
 
     images_json = json.dumps(data.get('images', []))
+    videos_json = json.dumps(data.get('videos', []))
 
     cursor.execute('''
-        INSERT INTO posts (category, title, content, contact, images, timestamp, price, user_id, location)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO posts (category, title, content, contact, images, videos, timestamp, price, user_id, location)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         data.get('category'),
         data.get('title'),
         data.get('content'),
         data.get('contact'),
         images_json,
+        videos_json,
         data.get('timestamp'),
         data.get('price'),
         session.get('user_id'),
@@ -548,6 +660,7 @@ def create_post():
         'content': data.get('content'),
         'contact': data.get('contact'),
         'images': data.get('images', []),
+        'videos': data.get('videos', []),
         'timestamp': data.get('timestamp'),
         'price': data.get('price'),
         'user_id': session.get('user_id'),
@@ -565,8 +678,8 @@ def update_post(post_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    # 获取原有的图片列表
-    cursor.execute('SELECT images FROM posts WHERE id = ?', (post_id,))
+    # 获取原有的图片和视频列表
+    cursor.execute('SELECT images, videos FROM posts WHERE id = ?', (post_id,))
     row = cursor.fetchone()
 
     if not row:
@@ -574,24 +687,25 @@ def update_post(post_id):
         return jsonify({'success': False, 'message': '信息不存在'}), 404
 
     old_images = json.loads(row['images']) if row['images'] else []
+    old_videos = json.loads(row['videos']) if row['videos'] else []
     new_images = data.get('images', [])
+    new_videos = data.get('videos', [])
 
-    # 删除不再使用的图片文件
-    for image in old_images:
-        if image not in new_images:
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], image)
-            if os.path.exists(image_path):
-                try:
-                    os.remove(image_path)
-                except:
-                    pass
+    # 删除不再使用的媒体文件（兼容 R2 URL 和本地文件）
+    for media in old_images:
+        if media not in new_images:
+            delete_media(media)
+    for media in old_videos:
+        if media not in new_videos:
+            delete_media(media)
 
     images_json = json.dumps(new_images)
+    videos_json = json.dumps(new_videos)
 
     # 更新数据库记录
     cursor.execute('''
         UPDATE posts
-        SET category = ?, title = ?, content = ?, contact = ?, images = ?, price = ?, location = ?
+        SET category = ?, title = ?, content = ?, contact = ?, images = ?, videos = ?, price = ?, location = ?
         WHERE id = ?
     ''', (
         data.get('category'),
@@ -599,6 +713,7 @@ def update_post(post_id):
         data.get('content'),
         data.get('contact'),
         images_json,
+        videos_json,
         data.get('price'),
         data.get('location'),
         post_id
@@ -614,6 +729,7 @@ def update_post(post_id):
         'content': data.get('content'),
         'contact': data.get('contact'),
         'images': new_images,
+        'videos': new_videos,
         'timestamp': data.get('timestamp'),
         'price': data.get('price'),
         'location': data.get('location')
@@ -639,6 +755,7 @@ def get_my_posts():
             'content': row['content'],
             'contact': row['contact'],
             'images': json.loads(row['images']) if row['images'] else [],
+            'videos': json.loads(row['videos']) if row['videos'] else [],
             'timestamp': row['timestamp'],
             'price': row['price'] if 'price' in row.keys() else None,
             'user_id': row['user_id'],
@@ -657,17 +774,16 @@ def delete_post(post_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    # 先获取图片列表，删除图片文件
-    cursor.execute('SELECT images FROM posts WHERE id = ?', (post_id,))
+    # 先获取图片和视频列表，删除媒体文件（兼容 R2 URL 和本地文件）
+    cursor.execute('SELECT images, videos FROM posts WHERE id = ?', (post_id,))
     row = cursor.fetchone()
-    if row and row['images']:
-        for image in json.loads(row['images']):
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], image)
-            if os.path.exists(image_path):
-                try:
-                    os.remove(image_path)
-                except:
-                    pass
+    if row:
+        if row['images']:
+            for media in json.loads(row['images']):
+                delete_media(media)
+        if row['videos']:
+            for media in json.loads(row['videos']):
+                delete_media(media)
 
     # 删除数据库记录
     cursor.execute('DELETE FROM posts WHERE id = ?', (post_id,))
@@ -676,79 +792,80 @@ def delete_post(post_id):
 
     return jsonify({'success': True, 'message': '删除成功'})
 
-# API：上传图片（需要登录）
+# API：获取 R2 预签名上传 URL（浏览器直传 R2，绕过服务器）
+@app.route('/api/presign', methods=['POST'])
+@login_required
+def presign_upload():
+    data = request.get_json()
+    original_filename = data.get('filename', '')
+    client_content_type = data.get('content_type', '')
+
+    if '.' not in original_filename:
+        return jsonify({'success': False, 'message': '文件必须有扩展名'}), 400
+
+    ext = original_filename.rsplit('.', 1)[1].lower()
+    if ext not in ALLOWED_ALL_MEDIA:
+        allowed = ', '.join(sorted(ALLOWED_ALL_MEDIA))
+        return jsonify({'success': False, 'message': f'不支持的文件格式，仅支持: {allowed}'}), 400
+
+    is_video = ext in ALLOWED_VIDEO_EXTENSIONS
+    content_type = client_content_type if client_content_type else get_content_type(ext)
+    key = f"{uuid.uuid4().hex}.{ext}"
+
+    try:
+        r2 = get_r2_client()
+        # 不签名 ContentType，避免浏览器 OPTIONS 预检失败
+        upload_url = r2.generate_presigned_url(
+            'put_object',
+            Params={
+                'Bucket': R2_BUCKET_NAME,
+                'Key': key,
+            },
+            ExpiresIn=3600
+        )
+        public_url = f"{R2_PUBLIC_URL}/{key}"
+        return jsonify({
+            'success': True,
+            'upload_url': upload_url,
+            'public_url': public_url,
+            'content_type': content_type,
+            'is_video': is_video
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'生成上传链接失败: {str(e)}'}), 500
+
+# API：上传图片（小文件兼容，仍保留供私信小图使用）
 @app.route('/api/upload', methods=['POST'])
 @login_required
 def upload_image():
     try:
-        print("=== 图片上传请求 ===")
-        print(f"登录用户: {session.get('username')}")
-
-        # 检查请求内容长度
-        print(f"Content-Length: {request.content_length}")
-        print(f"Content-Type: {request.content_type}")
-
-        # 访问 request.files 可能会阻塞，如果文件很大
-        print("开始读取上传文件...")
-        print(f"请求文件: {list(request.files.keys())}")
-        print("文件读取完成")
-
-        if 'image' not in request.files:
-            print("错误: 未找到 'image' 字段")
+        file_key = 'file' if 'file' in request.files else 'image'
+        if file_key not in request.files:
             return jsonify({'success': False, 'message': '未选择文件'}), 400
 
-        file = request.files['image']
+        file = request.files[file_key]
         original_filename = file.filename
-        print(f"原始文件名: {original_filename}")
 
-        if not original_filename or original_filename == '':
-            print("错误: 文件名为空")
+        if not original_filename:
             return jsonify({'success': False, 'message': '未选择文件'}), 400
-
-        # 直接从原始文件名提取扩展名（避免 secure_filename 剥掉中文后丢失扩展名）
         if '.' not in original_filename:
-            print("错误: 文件没有扩展名")
             return jsonify({'success': False, 'message': '文件必须有扩展名'}), 400
 
         ext = original_filename.rsplit('.', 1)[1].lower()
-        print(f"文件扩展名: {ext}")
+        if ext not in ALLOWED_ALL_MEDIA:
+            return jsonify({'success': False, 'message': '不支持的文件格式'}), 400
 
-        if ext not in ALLOWED_EXTENSIONS:
-            allowed = ', '.join(ALLOWED_EXTENSIONS)
-            print(f"错误: 不支持的文件格式 '{ext}'，允许的格式: {allowed}")
-            return jsonify({'success': False, 'message': f'不支持的文件格式，仅支持: {allowed}'}), 400
-
-        # 生成唯一文件名
+        is_video = ext in ALLOWED_VIDEO_EXTENSIONS
         filename = f"{uuid.uuid4().hex}.{ext}"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
-        print(f"保存路径: {filepath}")
-
-        # 确保上传目录存在
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
-        # 保存文件
-        file.save(filepath)
-
-        # 验证文件是否保存成功
-        if os.path.exists(filepath):
-            file_size = os.path.getsize(filepath)
-            print(f"上传成功: {filename}, 大小: {file_size} bytes")
-            return jsonify({'success': True, 'filename': filename})
-        else:
-            print("错误: 文件保存后不存在")
-            return jsonify({'success': False, 'message': '文件保存失败'}), 500
+        content_type = get_content_type(ext)
+        file_data = file.read()
+        url = upload_to_r2(file_data, filename, content_type)
+        return jsonify({'success': True, 'url': url, 'filename': url, 'is_video': is_video})
 
     except Exception as e:
-        print(f"上传异常: {type(e).__name__}: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'上传失败: {str(e)}'}), 500
-
-# 路由：访问上传的文件
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # 路由：微信收款码
 @app.route('/wechat_pay.png')
@@ -1136,12 +1253,287 @@ def search_users():
     return jsonify({'success': True, 'data': users})
 
 
+# ========== 用户主页 ==========
+
+# 路由：用户主页页面
+@app.route('/user/<username>')
+def user_profile(username):
+    return render_template('user_profile.html', username=username)
+
+# API：获取用户公开资料和帖子
+@app.route('/api/users/<username>/profile', methods=['GET'])
+def get_user_profile(username):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, username, role, status, created_at,
+               (SELECT COUNT(*) FROM posts WHERE user_id = users.id) as posts_count
+        FROM users WHERE username = ? AND status = 'active'
+    ''', (username,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'success': False, 'message': '用户不存在'}), 404
+
+    user_data = {
+        'id': row['id'],
+        'username': row['username'],
+        'role': row['role'],
+        'created_at': row['created_at'],
+        'posts_count': row['posts_count']
+    }
+
+    # 获取该用户的帖子
+    cursor.execute('''
+        SELECT p.id, p.category, p.title, p.content, p.images, p.videos,
+               p.timestamp, p.price, p.location,
+               (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
+        FROM posts p WHERE p.user_id = ?
+        ORDER BY p.timestamp DESC LIMIT 50
+    ''', (row['id'],))
+    posts = []
+    for p in cursor.fetchall():
+        posts.append({
+            'id': p['id'],
+            'category': p['category'],
+            'title': p['title'],
+            'content': p['content'],
+            'images': json.loads(p['images']) if p['images'] else [],
+            'videos': json.loads(p['videos']) if p['videos'] else [],
+            'timestamp': p['timestamp'],
+            'price': p['price'],
+            'location': p['location'],
+            'comment_count': p['comment_count']
+        })
+
+    conn.close()
+    return jsonify({'success': True, 'user': user_data, 'posts': posts})
+
+
+# ========== 私信（DM）API ==========
+
+# 路由：私信页面
+@app.route('/dm')
+def dm_list_page():
+    return render_template('dm.html', target_username=None)
+
+@app.route('/dm/<username>')
+def dm_chat_page(username):
+    return render_template('dm.html', target_username=username)
+
+# API：获取我的会话列表
+@app.route('/api/conversations', methods=['GET'])
+@login_required
+def get_conversations():
+    me = session.get('user_id')
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 第一步：取所有对话过的用户 ID，以及最后一条消息时间
+    cursor.execute('''
+        SELECT
+            CASE WHEN from_user_id = ? THEN to_user_id ELSE from_user_id END as other_id,
+            MAX(timestamp) as last_ts
+        FROM messages
+        WHERE from_user_id = ? OR to_user_id = ?
+        GROUP BY other_id
+        ORDER BY last_ts DESC
+    ''', (me, me, me))
+    rows = cursor.fetchall()
+
+    conversations = []
+    for r in rows:
+        other_id = r['other_id']
+
+        # 取用户名
+        cursor.execute('SELECT username FROM users WHERE id = ?', (other_id,))
+        u = cursor.fetchone()
+        if not u:
+            continue
+
+        # 取最新一条消息内容
+        cursor.execute('''
+            SELECT content, content_type, timestamp FROM messages
+            WHERE (from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)
+            ORDER BY timestamp DESC LIMIT 1
+        ''', (me, other_id, other_id, me))
+        last_msg = cursor.fetchone()
+
+        # 取未读数
+        cursor.execute('''
+            SELECT COUNT(*) as cnt FROM messages
+            WHERE from_user_id = ? AND to_user_id = ? AND is_read = 0
+        ''', (other_id, me))
+        unread = cursor.fetchone()['cnt']
+
+        conversations.append({
+            'user_id': other_id,
+            'username': u['username'],
+            'last_content': last_msg['content'] if last_msg else '',
+            'last_type': last_msg['content_type'] if last_msg else 'text',
+            'last_ts': r['last_ts'],
+            'unread': unread
+        })
+
+    conn.close()
+    return jsonify({'success': True, 'data': conversations})
+
+# API：获取与某用户的消息记录
+@app.route('/api/messages/<int:other_user_id>', methods=['GET'])
+@login_required
+def get_messages(other_user_id):
+    me = session.get('user_id')
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 标记对方发来的消息为已读
+    cursor.execute('''
+        UPDATE messages SET is_read = 1
+        WHERE from_user_id = ? AND to_user_id = ? AND is_read = 0
+    ''', (other_user_id, me))
+
+    cursor.execute('''
+        SELECT m.id, m.from_user_id, m.to_user_id, m.content,
+               m.content_type, m.media_url, m.timestamp, m.is_read,
+               u.username as from_username
+        FROM messages m
+        JOIN users u ON m.from_user_id = u.id
+        WHERE (m.from_user_id = ? AND m.to_user_id = ?)
+           OR (m.from_user_id = ? AND m.to_user_id = ?)
+        ORDER BY m.timestamp ASC
+        LIMIT 200
+    ''', (me, other_user_id, other_user_id, me))
+
+    rows = cursor.fetchall()
+    conn.commit()
+    conn.close()
+
+    messages = [{
+        'id': r['id'],
+        'from_user_id': r['from_user_id'],
+        'to_user_id': r['to_user_id'],
+        'content': r['content'],
+        'content_type': r['content_type'],
+        'media_url': r['media_url'],
+        'timestamp': r['timestamp'],
+        'is_read': r['is_read'],
+        'from_username': r['from_username']
+    } for r in rows]
+
+    return jsonify({'success': True, 'data': messages})
+
+# API：发送私信
+@app.route('/api/messages/<int:other_user_id>', methods=['POST'])
+@login_required
+def send_message(other_user_id):
+    me = session.get('user_id')
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM users WHERE id = ? AND status = "active"', (other_user_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({'success': False, 'message': '用户不存在'}), 404
+
+    content_type = request.form.get('content_type', 'text')
+    content = request.form.get('content', '').strip()
+    media_url = request.form.get('media_url', '').strip() or None
+
+    if content_type == 'text':
+        if not content:
+            conn.close()
+            return jsonify({'success': False, 'message': '消息不能为空'}), 400
+        if len(content) > 1000:
+            conn.close()
+            return jsonify({'success': False, 'message': '消息不能超过1000字'}), 400
+
+    elif content_type in ('image', 'video'):
+        # 前端已直传 R2，media_url 由前端传入
+        if not media_url:
+            conn.close()
+            return jsonify({'success': False, 'message': '缺少媒体文件URL'}), 400
+        if not content:
+            content = media_url.split('/')[-1]
+    else:
+        conn.close()
+        return jsonify({'success': False, 'message': '不支持的消息类型'}), 400
+
+    now = int(time.time() * 1000)
+    cursor.execute('''
+        INSERT INTO messages (from_user_id, to_user_id, content, content_type, media_url, timestamp, is_read)
+        VALUES (?, ?, ?, ?, ?, ?, 0)
+    ''', (me, other_user_id, content, content_type, media_url, now))
+    msg_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    # SSE 推送给接收方
+    sse_push(other_user_id, {
+        'type': 'new_dm',
+        'from_user_id': me,
+        'from_username': session.get('username'),
+        'content_type': content_type,
+        'preview': content[:50] if content_type == 'text' else f'[{content_type}]'
+    })
+
+    return jsonify({'success': True, 'data': {
+        'id': msg_id,
+        'from_user_id': me,
+        'to_user_id': other_user_id,
+        'content': content,
+        'content_type': content_type,
+        'media_url': media_url,
+        'timestamp': now,
+        'is_read': 0,
+        'from_username': session.get('username')
+    }})
+
+def cleanup_old_messages():
+    """删除10天前的私信（媒体文件一并删除）"""
+    expire_ts = int(time.time() * 1000) - 10 * 86400 * 1000
+    conn = get_db()
+    cursor = conn.cursor()
+    # 先查出要删除的媒体文件
+    cursor.execute('SELECT media_url FROM messages WHERE timestamp < ? AND media_url IS NOT NULL', (expire_ts,))
+    for row in cursor.fetchall():
+        delete_media(row['media_url'])
+    cursor.execute('DELETE FROM messages WHERE timestamp < ?', (expire_ts,))
+    conn.commit()
+    conn.close()
+
+def _cleanup_loop():
+    """后台线程：每小时清理一次过期私信"""
+    while True:
+        try:
+            cleanup_old_messages()
+        except Exception as e:
+            print(f"私信清理异常: {e}")
+        time.sleep(3600)  # 每小时执行一次
+
+# 启动后台清理线程
+_cleanup_thread = threading.Thread(target=_cleanup_loop, daemon=True)
+_cleanup_thread.start()
+
+# API：获取未读私信总数
+@app.route('/api/messages/unread_count', methods=['GET'])
+@login_required
+def get_dm_unread_count():
+    me = session.get('user_id')
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) as cnt FROM messages WHERE to_user_id = ? AND is_read = 0', (me,))
+    count = cursor.fetchone()['cnt']
+    conn.close()
+    return jsonify({'success': True, 'count': count})
+
+
 if __name__ == '__main__':
-    # 创建必要的目录
     os.makedirs('templates', exist_ok=True)
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
     # 初始化数据库
     init_db()
+
+    # 配置 R2 CORS（允许网站直传文件）
+    setup_r2_cors()
 
     app.run(debug=True, host='0.0.0.0', port=5002, threaded=True)

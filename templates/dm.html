@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='180x180.png') }}">
+    <title>私信 - 建德本地</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .app { display: flex; flex-direction: column; height: 100vh; max-width: 680px; margin: 0 auto; }
+
+        /* 顶栏 */
+        .top-bar {
+            background: white; padding: 12px 16px;
+            display: flex; align-items: center; gap: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12); flex-shrink: 0;
+        }
+        .back-link { color: #667eea; text-decoration: none; font-size: 14px; font-weight: 600; white-space: nowrap; }
+        .top-title { font-size: 16px; font-weight: 700; color: #333; flex: 1; }
+        .top-user-link { color: #667eea; font-size: 13px; text-decoration: none; font-weight: 600; }
+
+        /* 会话列表 */
+        #convList { flex: 1; overflow-y: auto; background: white; }
+        .conv-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 14px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer;
+            transition: background 0.15s;
+        }
+        .conv-item:hover { background: #f7f7ff; }
+        .conv-item.active { background: #f0f0ff; }
+        .conv-avatar {
+            width: 44px; height: 44px; border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; color: white; font-weight: 700; flex-shrink: 0;
+        }
+        .conv-info { flex: 1; min-width: 0; }
+        .conv-name { font-size: 15px; font-weight: 600; color: #333; }
+        .conv-last { font-size: 12px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
+        .conv-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+        .conv-time { font-size: 11px; color: #bbb; }
+        .conv-unread {
+            background: #f44336; color: white; border-radius: 10px;
+            min-width: 18px; height: 18px; font-size: 11px; font-weight: 700;
+            display: flex; align-items: center; justify-content: center; padding: 0 5px;
+        }
+
+        /* 聊天界面 */
+        #chatView {
+            display: flex; flex-direction: column; flex: 1; overflow: hidden;
+        }
+        .chat-header {
+            background: white; padding: 12px 16px;
+            display: flex; align-items: center; gap: 10px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); flex-shrink: 0;
+        }
+        .chat-back { color: #667eea; background: none; border: none; font-size: 20px; cursor: pointer; padding: 0 4px; }
+        .chat-name { font-size: 16px; font-weight: 700; color: #333; flex: 1; }
+        .chat-name a { color: #667eea; text-decoration: none; }
+        .expire-note { font-size: 11px; color: #bbb; flex-shrink: 0; }
+
+        .chat-messages {
+            flex: 1; overflow-y: auto; padding: 12px; background: #f5f5f5;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .msg-row { display: flex; align-items: flex-end; gap: 8px; }
+        .msg-row.mine { flex-direction: row-reverse; }
+        .msg-bubble {
+            max-width: 72%; padding: 10px 14px; border-radius: 18px;
+            font-size: 14px; line-height: 1.5; word-break: break-word;
+        }
+        .msg-row.theirs .msg-bubble { background: white; color: #333; border-bottom-left-radius: 4px; }
+        .msg-row.mine .msg-bubble { background: #667eea; color: white; border-bottom-right-radius: 4px; }
+        .msg-bubble img { max-width: 100%; border-radius: 10px; display: block; cursor: pointer; }
+        .msg-bubble video { max-width: 100%; border-radius: 10px; display: block; max-height: 200px; }
+        .msg-time { font-size: 10px; color: #bbb; white-space: nowrap; margin-bottom: 2px; }
+        .msg-row.mine .msg-time { text-align: right; }
+
+        /* 输入区 */
+        .chat-input-area {
+            background: white; padding: 10px 12px;
+            box-shadow: 0 -1px 4px rgba(0,0,0,0.08); flex-shrink: 0;
+        }
+        .input-row { display: flex; align-items: flex-end; gap: 8px; }
+        .input-actions { display: flex; gap: 4px; flex-shrink: 0; }
+        .media-btn {
+            background: none; border: none; font-size: 22px; cursor: pointer;
+            padding: 4px; color: #667eea; line-height: 1;
+        }
+        .msg-textarea {
+            flex: 1; border: 1.5px solid #e0e0e0; border-radius: 20px;
+            padding: 8px 14px; font-size: 14px; resize: none; outline: none;
+            max-height: 100px; font-family: inherit; line-height: 1.4;
+            transition: border-color 0.2s;
+        }
+        .msg-textarea:focus { border-color: #667eea; }
+        .send-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white; border: none; border-radius: 50%;
+            width: 40px; height: 40px; font-size: 16px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; transition: opacity 0.2s;
+        }
+        .send-btn:hover { opacity: 0.85; }
+        .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .upload-progress { font-size: 12px; color: #667eea; padding: 4px 0; display: none; }
+
+        /* 空状态 */
+        .empty-conv { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+        .empty-conv p { color: rgba(255,255,255,0.7); font-size: 15px; }
+
+        /* Lightbox */
+        #imgLightbox {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 9999;
+            align-items: center; justify-content: center;
+        }
+        #imgLightbox.active { display: flex; }
+        #imgLightbox img { max-width: 95%; max-height: 90vh; object-fit: contain; border-radius: 8px; }
+        #imgLightboxClose {
+            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.2);
+            border: none; color: white; font-size: 22px; width: 42px; height: 42px;
+            border-radius: 50%; cursor: pointer;
+        }
+
+        /* 登录提示 */
+        .login-tip {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+        }
+        .login-card {
+            background: white; border-radius: 16px; padding: 30px 24px; text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        .login-card p { color: #666; margin-bottom: 16px; font-size: 15px; }
+        .login-card a {
+            display: inline-block; background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white; padding: 10px 28px; border-radius: 20px;
+            text-decoration: none; font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="top-bar">
+            <a href="/" class="back-link">← 首页</a>
+            <span class="top-title">💬 私信</span>
+            <span id="topUserInfo"></span>
+        </div>
+
+        <!-- 未登录提示 -->
+        <div class="login-tip" id="loginTip" style="display:none;">
+            <div class="login-card">
+                <p>请先登录后使用私信功能</p>
+                <a href="/login">去登录</a>
+            </div>
+        </div>
+
+        <!-- 会话列表 -->
+        <div id="convList" style="display:none;"></div>
+
+        <!-- 聊天界面 -->
+        <div id="chatView" style="display:none;">
+            <div class="chat-header">
+                <button class="chat-back" onclick="backToList()">‹</button>
+                <div class="chat-name" id="chatName"></div>
+                <span class="expire-note">消息10天后自动删除</span>
+            </div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-area">
+                <div class="upload-progress" id="uploadProgress">上传中...</div>
+                <div class="input-row">
+                    <div class="input-actions">
+                        <button class="media-btn" title="发送图片" onclick="document.getElementById('imgInput').click()">🖼️</button>
+                        <button class="media-btn" title="发送视频" onclick="document.getElementById('vidInput').click()">🎬</button>
+                    </div>
+                    <textarea class="msg-textarea" id="msgInput" placeholder="发消息..." rows="1"
+                        oninput="autoResize(this)"
+                        onkeydown="handleKey(event)"></textarea>
+                    <button class="send-btn" id="sendBtn" onclick="sendText()">➤</button>
+                </div>
+                <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="sendMedia(this,'image')">
+                <input type="file" id="vidInput" accept="video/*" style="display:none" onchange="sendMedia(this,'video')">
+            </div>
+        </div>
+
+        <!-- 无会话空状态 -->
+        <div class="empty-conv" id="emptyConv" style="display:none;">
+            <p>暂无私信，去找人聊聊吧</p>
+        </div>
+    </div>
+
+    <!-- 图片灯箱 -->
+    <div id="imgLightbox">
+        <button id="imgLightboxClose" onclick="closeLightbox()">✕</button>
+        <img id="lightboxImg" alt="">
+    </div>
+
+    <script>
+        const TARGET_USERNAME = {{ target_username | tojson }};
+        let currentUser = null;
+        let currentChatUserId = null;
+        let currentChatUsername = null;
+        let pollTimer = null;
+        let sseSource = null;
+
+        function escapeHtml(t) {
+            if (!t) return '';
+            const d = document.createElement('div'); d.textContent = t; return d.innerHTML;
+        }
+        function formatTime(ts) {
+            const d = new Date(ts);
+            const now = new Date();
+            const diff = now - d;
+            if (diff < 86400000) return d.toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
+            return d.toLocaleDateString('zh-CN',{month:'numeric',day:'numeric'}) + ' ' +
+                   d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+        }
+        function getMediaUrl(u) {
+            return u || '';
+        }
+        function autoResize(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+        }
+        function handleKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+        }
+        function openLightbox(src) {
+            document.getElementById('lightboxImg').src = src;
+            document.getElementById('imgLightbox').classList.add('active');
+        }
+        function closeLightbox() {
+            document.getElementById('imgLightbox').classList.remove('active');
+        }
+        document.getElementById('imgLightbox').addEventListener('click', e => {
+            if (e.target.id === 'imgLightbox') closeLightbox();
+        });
+
+        async function init() {
+            const res = await fetch('/api/check_login');
+            const r = await res.json();
+            if (!r.logged_in) {
+                document.getElementById('loginTip').style.display = 'flex';
+                return;
+            }
+            currentUser = r.user;
+            document.getElementById('topUserInfo').innerHTML =
+                `<a href="/user_center" class="top-user-link">${escapeHtml(currentUser.username)}</a>`;
+
+            setupSSE();
+
+            if (TARGET_USERNAME) {
+                // 直接打开与目标用户的对话
+                await openChatByUsername(TARGET_USERNAME);
+            } else {
+                await loadConversations();
+            }
+        }
+
+        function setupSSE() {
+            if (sseSource) { sseSource.close(); sseSource = null; }
+            sseSource = new EventSource('/api/notifications/stream');
+            sseSource.onmessage = e => {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'new_dm' && currentChatUserId == data.from_user_id) {
+                        loadMessages(false);
+                    } else if (data.type === 'new_dm') {
+                        loadConversationsSilent();
+                    }
+                } catch(_) {}
+            };
+            sseSource.onerror = () => {
+                sseSource.close();
+                sseSource = null;
+                // 5秒后重新连接
+                setTimeout(() => { if (currentUser) setupSSE(); }, 5000);
+            };
+        }
+
+        async function loadConversations() {
+            document.getElementById('convList').style.display = 'none';
+            document.getElementById('chatView').style.display = 'none';
+            document.getElementById('emptyConv').style.display = 'none';
+
+            try {
+                const res = await fetch('/api/conversations');
+                const r = await res.json();
+                if (!r.success) {
+                    document.getElementById('emptyConv').style.display = 'flex';
+                    return;
+                }
+                renderConversations(r.data);
+            } catch(e) {
+                document.getElementById('emptyConv').style.display = 'flex';
+            }
+        }
+
+        async function loadConversationsSilent() {
+            const res = await fetch('/api/conversations');
+            const r = await res.json();
+            if (!r.success) return;
+            renderConversations(r.data);
+        }
+
+        function renderConversations(convs) {
+            const el = document.getElementById('convList');
+            if (!convs.length) {
+                el.style.display = 'none';
+                document.getElementById('emptyConv').style.display = 'flex';
+                return;
+            }
+            el.style.display = 'block';
+            document.getElementById('emptyConv').style.display = 'none';
+            el.innerHTML = convs.map(c => {
+                const lastMsg = c.last_type === 'image' ? '[图片]' : c.last_type === 'video' ? '[视频]' : escapeHtml(c.last_content || '');
+                const unreadHtml = c.unread > 0 ? `<span class="conv-unread">${c.unread}</span>` : '';
+                return `
+                <div class="conv-item" onclick="openChat(${c.user_id},'${escapeHtml(c.username)}')">
+                    <div class="conv-avatar">${escapeHtml(c.username.charAt(0).toUpperCase())}</div>
+                    <div class="conv-info">
+                        <div class="conv-name">${escapeHtml(c.username)}</div>
+                        <div class="conv-last">${lastMsg}</div>
+                    </div>
+                    <div class="conv-meta">
+                        <span class="conv-time">${formatTime(c.last_ts)}</span>
+                        ${unreadHtml}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function openChatByUsername(username) {
+            const res = await fetch('/api/users/' + encodeURIComponent(username) + '/profile');
+            const r = await res.json();
+            if (!r.success) {
+                alert('用户不存在');
+                await loadConversations();
+                return;
+            }
+            openChat(r.user.id, r.user.username);
+        }
+
+        async function openChat(userId, username) {
+            currentChatUserId = userId;
+            currentChatUsername = username;
+
+            document.getElementById('convList').style.display = 'none';
+            document.getElementById('emptyConv').style.display = 'none';
+            document.getElementById('chatView').style.display = 'flex';
+            document.getElementById('chatName').innerHTML =
+                `<a href="/user/${encodeURIComponent(username)}">${escapeHtml(username)}</a>`;
+
+            await loadMessages(true);
+
+            // 每3秒轮询补充（SSE 兜底）
+            clearInterval(pollTimer);
+            pollTimer = setInterval(() => loadMessages(false), 3000);
+        }
+
+        function backToList() {
+            clearInterval(pollTimer);
+            currentChatUserId = null;
+            loadConversations();
+        }
+
+        async function loadMessages(scrollToBottom) {
+            if (!currentChatUserId) return;
+            const res = await fetch('/api/messages/' + currentChatUserId);
+            const r = await res.json();
+            if (!r.success) return;
+            renderMessages(r.data, scrollToBottom);
+        }
+
+        function renderMessages(msgs, scrollToBottom) {
+            const el = document.getElementById('chatMessages');
+            const prevScrollTop = el.scrollTop;
+            const prevScrollHeight = el.scrollHeight;
+
+            el.innerHTML = msgs.map(m => {
+                const isMine = m.from_user_id === currentUser.id;
+                let bubble = '';
+                if (m.content_type === 'text') {
+                    bubble = escapeHtml(m.content);
+                } else if (m.content_type === 'image') {
+                    const src = getMediaUrl(m.media_url || m.content);
+                    bubble = `<img src="${escapeHtml(src)}" onclick="openLightbox('${escapeHtml(src)}')" alt="图片">`;
+                } else if (m.content_type === 'video') {
+                    const src = getMediaUrl(m.media_url || m.content);
+                    bubble = `<video src="${escapeHtml(src)}" controls preload="metadata"></video>`;
+                }
+                return `
+                <div class="msg-row ${isMine ? 'mine' : 'theirs'}">
+                    <div>
+                        <div class="msg-time">${formatTime(m.timestamp)}</div>
+                        <div class="msg-bubble">${bubble}</div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            if (scrollToBottom) {
+                el.scrollTop = el.scrollHeight;
+            } else {
+                // 保持滚动位置（仅新消息时跳到底部）
+                const newScrollHeight = el.scrollHeight;
+                if (newScrollHeight > prevScrollHeight) {
+                    el.scrollTop = el.scrollTop + (newScrollHeight - prevScrollHeight);
+                }
+            }
+        }
+
+        async function sendText() {
+            const input = document.getElementById('msgInput');
+            const text = input.value.trim();
+            if (!text || !currentChatUserId) return;
+
+            const btn = document.getElementById('sendBtn');
+            btn.disabled = true;
+
+            const fd = new FormData();
+            fd.append('content_type', 'text');
+            fd.append('content', text);
+
+            try {
+                const res = await fetch('/api/messages/' + currentChatUserId, { method: 'POST', body: fd });
+                const r = await res.json();
+                if (r.success) {
+                    input.value = '';
+                    input.style.height = 'auto';
+                    await loadMessages(true);
+                } else {
+                    alert(r.message || '发送失败');
+                }
+            } catch(e) {
+                alert('网络错误，发送失败');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function sendMedia(inputEl, mediaType) {
+            if (!inputEl.files[0] || !currentChatUserId) return;
+            const file = inputEl.files[0];
+            inputEl.value = '';
+
+            const progress = document.getElementById('uploadProgress');
+            progress.style.display = 'block';
+            progress.textContent = mediaType === 'image' ? '图片上传中...' : '视频上传中...';
+
+            try {
+                // 第一步：直接上传到 R2
+                const presignRes = await fetch('/api/presign', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ filename: file.name, content_type: file.type })
+                });
+                const presign = await presignRes.json();
+                if (!presign.success) throw new Error(presign.message);
+
+                // 不带 Content-Type 头，与预签名保持一致
+                const uploadRes = await fetch(presign.upload_url, {
+                    method: 'PUT', body: file
+                });
+                if (!uploadRes.ok) throw new Error(`上传失败: ${uploadRes.status}`);
+
+                // 第二步：通知服务器记录消息
+                const fd = new FormData();
+                fd.append('content_type', mediaType);
+                fd.append('media_url', presign.public_url);
+                fd.append('content', file.name);
+
+                const res = await fetch('/api/messages/' + currentChatUserId, { method: 'POST', body: fd });
+                const r = await res.json();
+                if (r.success) {
+                    await loadMessages(true);
+                } else {
+                    alert(r.message || '发送失败');
+                }
+            } catch(e) {
+                alert('上传失败：' + e.message);
+            } finally {
+                progress.style.display = 'none';
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

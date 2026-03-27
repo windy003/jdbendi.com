@@ -199,8 +199,12 @@
             document.getElementById('lightbox').classList.remove('active');
             document.body.style.overflow = '';
         }
+        function getMediaUrl(u) {
+            return u || '';
+        }
+
         function updateLb() {
-            document.getElementById('lightboxImg').src = '/uploads/' + lbImages[lbIdx];
+            document.getElementById('lightboxImg').src = getMediaUrl(lbImages[lbIdx]);
             const has = lbImages.length > 1;
             document.getElementById('lightboxCounter').textContent = has ? (lbIdx+1)+' / '+lbImages.length : '';
             document.getElementById('lightboxCounter').style.display = has ? 'block' : 'none';
@@ -249,7 +253,11 @@
                 return;
             }
             postData = r.data;
-            lbImages = postData.images || [];
+            lbImages = (postData.images || []).filter(img => {
+                // 只放图片（不放视频）进灯箱
+                const ext = img.split('?')[0].split('.').pop().toLowerCase();
+                return ['jpg','jpeg','png','gif','webp'].includes(ext);
+            });
             renderPost();
         }
 
@@ -262,15 +270,23 @@
                     <h1 class="post-title">${escapeHtml(p.title)}</h1>
                     <span class="post-category category-${p.category}">${p.category}</span>
                 </div>
-                <div class="post-meta">发布者：<span>${escapeHtml(p.author || '匿名')}</span> &nbsp;·&nbsp; ${formatTime(p.timestamp)}</div>
+                <div class="post-meta">
+                    发布者：<a href="/user/${encodeURIComponent(p.author || '')}" style="color:#667eea;font-weight:600;text-decoration:none;">${escapeHtml(p.author || '匿名')}</a>
+                    ${p.author && currentUser && p.author !== currentUser.username ? `<a href="/dm/${encodeURIComponent(p.author)}" style="margin-left:8px;font-size:12px;color:#764ba2;font-weight:600;text-decoration:none;">💬私信</a>` : ''}
+                    &nbsp;·&nbsp; ${formatTime(p.timestamp)}
+                </div>
                 <div class="post-content">${escapeHtml(p.content)}</div>
                 ${p.price ? `<div class="post-price">¥ ${escapeHtml(p.price)}</div>` : ''}
                 ${p.location ? `<div class="post-location">${escapeHtml(p.location)}</div>` : ''}
                 ${lbImages.length ? `
                     <div class="post-images">
-                        ${lbImages.map((img,i) => `<img src="/uploads/${img}" alt="图片" onclick="openLightbox(${i})">`).join('')}
+                        ${lbImages.map((img,i) => `<img src="${getMediaUrl(img)}" alt="图片" onclick="openLightbox(${i})">`).join('')}
                     </div>` : ''}
-                <div class="post-contact-box">📞 联系方式：${escapeHtml(p.contact)}</div>
+                ${(p.videos||[]).length ? `
+                    <div style="margin:12px 0;">
+                        ${p.videos.map(v => `<video src="${getMediaUrl(v)}" controls preload="metadata" style="width:100%;border-radius:8px;max-height:260px;margin-bottom:8px;"></video>`).join('')}
+                    </div>` : ''}
+                ${p.contact ? `<div class="post-contact-box">📞 联系方式：${escapeHtml(p.contact)}</div>` : ''}
             </div>`;
             document.getElementById('commentSection').style.display = 'block';
             renderCommentForm();

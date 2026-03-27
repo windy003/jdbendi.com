@@ -234,8 +234,12 @@
             document.getElementById('lightbox').classList.remove('active');
             document.body.style.overflow = '';
         }
+        function getMediaUrl(u) {
+            return u || '';
+        }
+
         function updateLightbox() {
-            document.getElementById('lightboxImg').src = '/uploads/' + lbImages[lbIndex];
+            document.getElementById('lightboxImg').src = getMediaUrl(lbImages[lbIndex]);
             const counter = document.getElementById('lightboxCounter');
             const has = lbImages.length > 1;
             counter.textContent = has ? (lbIndex + 1) + ' / ' + lbImages.length : '';
@@ -264,6 +268,7 @@
         });
 
         let unreadCount = 0;
+        let dmUnreadCount = 0;
         let sseSource = null;
 
         async function checkLoginStatus() {
@@ -275,6 +280,7 @@
                     updateNavBar(true, r.user);
                     // 先拿未读数（普通请求），完成后再建 SSE 长连接
                     await fetchUnreadCount();
+                    await fetchDmUnreadCount();
                     startSSE();
                 } else {
                     currentUser = null;
@@ -291,6 +297,14 @@
             } catch(e) {}
         }
 
+        async function fetchDmUnreadCount() {
+            try {
+                const res = await fetch('/api/messages/unread_count');
+                const r = await res.json();
+                if (r.success) { dmUnreadCount = r.count; updateDmBadge(); }
+            } catch(e) {}
+        }
+
         function updateBadge() {
             const badge = document.getElementById('notifBadge');
             if (!badge) return;
@@ -302,15 +316,31 @@
             }
         }
 
+        function updateDmBadge() {
+            const badge = document.getElementById('dmBadge');
+            if (!badge) return;
+            if (dmUnreadCount > 0) {
+                badge.textContent = dmUnreadCount > 99 ? '99+' : dmUnreadCount;
+                badge.style.display = 'inline-flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
         function startSSE() {
             if (sseSource) sseSource.close();
             sseSource = new EventSource('/api/notifications/stream');
             sseSource.onmessage = (e) => {
-                const data = JSON.parse(e.data);
-                if (data.type === 'new_notification') {
-                    unreadCount++;
-                    updateBadge();
-                }
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'new_notification') {
+                        unreadCount++;
+                        updateBadge();
+                    } else if (data.type === 'new_dm') {
+                        dmUnreadCount++;
+                        updateDmBadge();
+                    }
+                } catch(_) {}
             };
             sseSource.onerror = () => {
                 // 断线后 30 秒重连
@@ -328,6 +358,7 @@
                 nav.innerHTML = `
                     <span style="color:#667eea;font-weight:600;">欢迎, ${escapeHtml(user.username)}</span> |
                     ${centerLink} |
+                    <a href="/dm" style="color:#764ba2;text-decoration:none;margin:0 10px;font-weight:600;position:relative;" id="dmNavLink">💬私信<span id="dmBadge" style="position:absolute;top:-8px;right:-12px;background:#f44336;color:white;border-radius:10px;min-width:16px;height:16px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px;"></span></a> |
                     <a href="#" onclick="logout();return false;" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">退出登录</a>
                 `;
             } else {
@@ -385,16 +416,22 @@
                         <h3 class="post-title"><a href="/post/${post.id}">${escapeHtml(post.title)}</a></h3>
                         <span class="post-category category-${post.category}">${post.category}</span>
                     </div>
-                    <div class="post-author">发布者：<span>${escapeHtml(post.author || '匿名')}</span></div>
+                    <div class="post-author">发布者：<a href="/user/${encodeURIComponent(post.author || '')}" style="color:#667eea;font-weight:600;text-decoration:none;">${escapeHtml(post.author || '匿名')}</a>
+                        ${post.author && currentUser && post.author !== currentUser.username ? `<a href="/dm/${encodeURIComponent(post.author)}" style="margin-left:8px;font-size:11px;color:#764ba2;font-weight:600;text-decoration:none;">💬私信</a>` : ''}
+                    </div>
                     <div class="post-content">${escapeHtml(post.content)}</div>
                     ${post.price ? `<div class="post-price">¥ ${escapeHtml(post.price)}</div>` : ''}
                     ${post.location ? `<div class="post-location">${escapeHtml(post.location)}</div>` : ''}
                     ${post.images && post.images.length ? `
                         <div class="post-images">
-                            ${post.images.map((img,i) => `<img src="/uploads/${img}" alt="图片" onclick="openLightbox(${post.id},${i})">`).join('')}
+                            ${post.images.map((img,i) => `<img src="${getMediaUrl(img)}" alt="图片" onclick="openLightbox(${post.id},${i})">`).join('')}
+                        </div>` : ''}
+                    ${post.videos && post.videos.length ? `
+                        <div class="post-videos" style="margin:8px 0;">
+                            ${post.videos.map(v => `<video src="${getMediaUrl(v)}" controls preload="metadata" style="width:100%;border-radius:8px;max-height:200px;"></video>`).join('')}
                         </div>` : ''}
                     <div class="post-footer">
-                        <div class="post-contact">📞 ${escapeHtml(post.contact)}</div>
+                        ${post.contact ? `<div class="post-contact">📞 ${escapeHtml(post.contact)}</div>` : ''}
                         <div class="post-meta-row">
                             <div class="post-time">${formatTime(post.timestamp)}</div>
                             <a href="/post/${post.id}" class="detail-link">查看详情 →</a>

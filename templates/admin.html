@@ -529,8 +529,8 @@
                         <textarea id="content" placeholder="请输入详细信息..." required></textarea>
                     </div>
                     <div class="form-group">
-                        <label for="contact">联系方式</label>
-                        <input type="text" id="contact" placeholder="电话/微信等" required>
+                        <label for="contact">联系方式（选填）</label>
+                        <input type="text" id="contact" placeholder="电话/微信等（可不填）">
                     </div>
                     <div class="form-group">
                         <label for="price">价格（可选）</label>
@@ -541,6 +541,12 @@
                         <input type="file" id="images" accept="image/*" multiple style="display: none;">
                         <button type="button" class="btn-upload" onclick="document.getElementById('images').click()">选择图片</button>
                         <div id="imagePreview" class="image-preview"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="videos">上传视频（最多3个）</label>
+                        <input type="file" id="videos" accept="video/*" multiple style="display: none;">
+                        <button type="button" class="btn-upload" onclick="document.getElementById('videos').click()">选择视频</button>
+                        <div id="videoPreview" class="image-preview"></div>
                     </div>
                     <button type="submit" class="btn" id="submitBtn">发布信息</button>
                     <button type="button" class="btn-cancel" id="cancelBtn" style="display: none; margin-top: 10px;">取消编辑</button>
@@ -557,6 +563,11 @@
     <script>
         let posts = [];
         let uploadedImages = [];
+        let uploadedVideos = [];
+
+        function getMediaUrl(u) {
+            return u || '';
+        }
 
         // 页面加载时检查登录状态
         checkLoginStatus();
@@ -628,120 +639,116 @@
             });
         }
 
+        // 通用直传 R2 函数（浏览器直接上传，绕过服务器）
+        async function uploadToR2(file) {
+            // 1. 向服务器申请预签名 URL
+            const presignRes = await fetch('/api/presign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ filename: file.name, content_type: file.type })
+            });
+            const presign = await presignRes.json();
+            if (!presign.success) throw new Error(presign.message);
+
+            // 2. 浏览器直接 PUT 到 R2（不带 Content-Type，与签名保持一致）
+            const uploadRes = await fetch(presign.upload_url, {
+                method: 'PUT',
+                body: file
+            });
+            if (!uploadRes.ok) throw new Error(`R2上传失败: ${uploadRes.status}`);
+
+            return presign.public_url;
+        }
+
         // 图片选择处理
         document.getElementById('images').addEventListener('change', async function(e) {
             const files = Array.from(e.target.files);
-
             if (uploadedImages.length + files.length > 9) {
-                alert('最多只能上传9张图片');
-                return;
+                alert('最多只能上传9张图片'); return;
             }
-
-            const uploadButton = document.querySelector('.btn-upload');
-            const originalText = uploadButton.textContent;
-
+            const btn = document.querySelector('.btn-upload');
+            const orig = btn.textContent;
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 if (uploadedImages.length >= 9) break;
-
                 if (!file.type.startsWith('image/')) {
-                    alert(`文件 "${file.name}" 不是图片格式，已跳过`);
-                    continue;
+                    alert(`"${file.name}" 不是图片格式，已跳过`); continue;
                 }
-
-                // 检查文件大小（16MB）
-                if (file.size > 16 * 1024 * 1024) {
-                    alert(`图片 "${file.name}" 超过16MB限制，已跳过`);
-                    continue;
-                }
-
-                // 如果图片大于2MB，自动压缩
                 let fileToUpload = file;
                 if (file.size > 2 * 1024 * 1024) {
-                    uploadButton.textContent = `正在压缩图片 ${i + 1}/${files.length}...`;
-                    try {
-                        fileToUpload = await compressImage(file);
-                    } catch (error) {
-                        console.error('图片压缩失败:', error);
-                        alert(`图片 "${file.name}" 压缩失败，将尝试上传原图`);
-                        fileToUpload = file;
-                    }
+                    btn.textContent = `压缩中 ${i+1}/${files.length}...`;
+                    try { fileToUpload = await compressImage(file); } catch(_) {}
                 }
-
-                // 显示上传进度
-                uploadButton.textContent = `正在上传 ${i + 1}/${files.length}...`;
-
-                // 上传图片到服务器
-                const formData = new FormData();
-                formData.append('image', fileToUpload);
-
+                btn.textContent = `上传中 ${i+1}/${files.length}...`;
                 try {
-                    console.log('开始上传:', file.name, file.type, file.size);
-
-                    const response = await fetch('/api/upload', {
-                        method: 'POST',
-                        body: formData,
-                        credentials: 'same-origin',  // 重要：包含 Session Cookie
-                        // 不设置 Content-Type，让浏览器自动设置（包括 boundary）
-                    });
-
-                    console.log('响应状态:', response.status);
-                    console.log('响应头:', response.headers);
-
-                    // 检查响应是否成功
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error('服务器返回错误:', errorText);
-                        throw new Error(`服务器错误 (${response.status}): ${errorText}`);
-                    }
-
-                    const result = await response.json();
-                    console.log('响应结果:', result);
-
-                    if (result.success) {
-                        uploadedImages.push(result.filename);
-                        renderImagePreview();
-                        console.log('上传成功:', result.filename);
-                    } else {
-                        alert(`上传 "${file.name}" 失败：${result.message}`);
-                        console.error('上传失败:', result.message);
-                    }
-                } catch (error) {
-                    console.error('上传错误详情:', error);
-                    console.error('错误类型:', error.name);
-                    console.error('错误消息:', error.message);
-                    console.error('错误堆栈:', error.stack);
-
-                    let errorMsg = error.message;
-                    if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-                        errorMsg = '网络连接失败，可能原因：\n1. 服务器未运行\n2. 文件太大导致超时\n3. 浏览器阻止了请求\n\n请检查服务器控制台的错误信息';
-                    }
-                    alert(`上传 "${file.name}" 失败：\n${errorMsg}`);
+                    const url = await uploadToR2(fileToUpload);
+                    uploadedImages.push(url);
+                    renderImagePreview();
+                } catch(err) {
+                    alert(`上传 "${file.name}" 失败：${err.message}`);
                 }
             }
-
-            // 恢复按钮文本
-            uploadButton.textContent = originalText;
-
-            // 清空文件选择器
+            btn.textContent = orig;
             e.target.value = '';
         });
 
         // 渲染图片预览
         function renderImagePreview() {
             const previewContainer = document.getElementById('imagePreview');
-            previewContainer.innerHTML = uploadedImages.map((filename, index) => `
+            previewContainer.innerHTML = uploadedImages.map((url, index) => `
                 <div class="image-preview-item">
-                    <img src="/uploads/${filename}" alt="预览">
+                    <img src="${getMediaUrl(url)}" alt="预览">
                     <button type="button" class="remove-image" onclick="removeImage(${index})">×</button>
                 </div>
             `).join('');
         }
 
-        // 删除图片
         function removeImage(index) {
             uploadedImages.splice(index, 1);
             renderImagePreview();
+        }
+
+        // 视频上传处理
+        document.getElementById('videos').addEventListener('change', async function(e) {
+            const files = Array.from(e.target.files);
+            if (uploadedVideos.length + files.length > 3) {
+                alert('最多只能上传3个视频'); return;
+            }
+            const btn = document.querySelectorAll('.btn-upload')[1];
+            const orig = btn.textContent;
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (uploadedVideos.length >= 3) break;
+                if (!file.type.startsWith('video/')) {
+                    alert(`"${file.name}" 不是视频格式，已跳过`); continue;
+                }
+                btn.textContent = `上传视频 ${i+1}/${files.length}...`;
+                try {
+                    const url = await uploadToR2(file);
+                    uploadedVideos.push(url);
+                    renderVideoPreview();
+                } catch(err) {
+                    alert(`上传 "${file.name}" 失败：${err.message}`);
+                }
+            }
+            btn.textContent = orig;
+            e.target.value = '';
+        });
+
+        function renderVideoPreview() {
+            const container = document.getElementById('videoPreview');
+            container.innerHTML = uploadedVideos.map((url, index) => `
+                <div class="image-preview-item">
+                    <video src="${getMediaUrl(url)}" style="width:100%;height:80px;object-fit:cover;border-radius:6px;" preload="metadata"></video>
+                    <button type="button" class="remove-image" onclick="removeVideo(${index})">×</button>
+                </div>
+            `).join('');
+        }
+
+        function removeVideo(index) {
+            uploadedVideos.splice(index, 1);
+            renderVideoPreview();
         }
 
         // 编辑信息
@@ -757,7 +764,9 @@
             document.getElementById('contact').value = post.contact;
             document.getElementById('price').value = post.price || '';
             uploadedImages = post.images ? [...post.images] : [];
+            uploadedVideos = post.videos ? [...post.videos] : [];
             renderImagePreview();
+            renderVideoPreview();
 
             // 修改UI
             document.getElementById('formTitle').textContent = '编辑信息';
@@ -777,7 +786,9 @@
             document.getElementById('editingPostId').value = '';
             document.getElementById('publishForm').reset();
             uploadedImages = [];
+            uploadedVideos = [];
             renderImagePreview();
+            renderVideoPreview();
             document.getElementById('formTitle').textContent = '发布新信息';
             document.getElementById('submitBtn').textContent = '发布信息';
             document.getElementById('cancelBtn').style.display = 'none';
@@ -914,12 +925,17 @@
                         ${post.price ? `<div class="post-price">💰 ${escapeHtml(post.price)}</div>` : ''}
                         ${post.images && post.images.length > 0 ? `
                             <div class="post-images">
-                                ${post.images.map(img => `<img src="/uploads/${img}" alt="图片" onclick="window.open('/uploads/${img}')">`).join('')}
+                                ${post.images.map(img => `<img src="${getMediaUrl(img)}" alt="图片" onclick="window.open('${getMediaUrl(img)}')">`).join('')}
+                            </div>
+                        ` : ''}
+                        ${post.videos && post.videos.length > 0 ? `
+                            <div style="margin:6px 0;">
+                                ${post.videos.map(v => `<video src="${getMediaUrl(v)}" controls preload="metadata" style="max-width:100%;border-radius:6px;max-height:120px;"></video>`).join('')}
                             </div>
                         ` : ''}
                         <div class="post-footer">
                             <div>
-                                <div class="post-contact">📞 ${escapeHtml(post.contact)}</div>
+                                ${post.contact ? `<div class="post-contact">📞 ${escapeHtml(post.contact)}</div>` : ''}
                                 <div class="post-time">${formatTime(post.timestamp)}</div>
                             </div>
                             <div>
@@ -972,6 +988,7 @@
                 contact: document.getElementById('contact').value,
                 price: document.getElementById('price').value,
                 images: uploadedImages,
+                videos: uploadedVideos,
                 timestamp: isEditing ? posts.find(p => p.id == editingPostId).timestamp : Date.now()
             };
 

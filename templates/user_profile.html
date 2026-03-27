@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='180x180.png') }}">
+    <title>用户主页 - 建德本地</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container { max-width: 680px; margin: 0 auto; padding: 15px; }
+        .top-bar {
+            background: white; border-radius: 12px; padding: 12px 16px;
+            margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .back-link { color: #667eea; text-decoration: none; font-size: 14px; font-weight: 600; }
+        .top-right { font-size: 14px; }
+        .top-right a { color: #667eea; text-decoration: none; margin-left: 12px; font-weight: 600; }
+
+        .profile-card {
+            background: white; border-radius: 16px; padding: 24px 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 16px; text-align: center;
+        }
+        .avatar {
+            width: 72px; height: 72px; border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 32px; color: white; font-weight: 700;
+            margin: 0 auto 12px;
+        }
+        .profile-username { font-size: 22px; font-weight: 700; color: #333; margin-bottom: 6px; }
+        .profile-badge {
+            display: inline-block; padding: 3px 10px; border-radius: 10px;
+            font-size: 12px; font-weight: 600; color: white;
+            background: linear-gradient(135deg, #667eea, #764ba2); margin-bottom: 10px;
+        }
+        .profile-stats {
+            display: flex; justify-content: center; gap: 30px; margin: 14px 0;
+        }
+        .stat-item { text-align: center; }
+        .stat-num { font-size: 20px; font-weight: 700; color: #667eea; }
+        .stat-label { font-size: 12px; color: #999; margin-top: 2px; }
+        .profile-join { font-size: 13px; color: #aaa; }
+
+        .dm-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white; border: none; border-radius: 20px;
+            padding: 10px 24px; font-size: 14px; font-weight: 600;
+            cursor: pointer; margin-top: 14px; text-decoration: none;
+            transition: opacity 0.2s;
+        }
+        .dm-btn:hover { opacity: 0.85; }
+        .dm-btn-disabled {
+            background: #ccc; cursor: not-allowed;
+        }
+
+        .posts-section h2 { color: white; font-size: 16px; margin-bottom: 12px; padding-left: 4px; }
+        .post-card {
+            background: white; padding: 15px; border-radius: 12px;
+            margin-bottom: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .post-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .post-title { font-size: 16px; font-weight: 700; color: #333; }
+        .post-title a { color: #333; text-decoration: none; }
+        .post-title a:hover { color: #667eea; }
+        .post-category {
+            display: inline-block; padding: 3px 8px; border-radius: 10px;
+            font-size: 12px; font-weight: 600; color: white; margin-left: 8px; flex-shrink: 0;
+        }
+        .category-出售 { background: #4CAF50; }
+        .category-求购 { background: #2196F3; }
+        .category-招聘 { background: #FF9800; }
+        .category-出租房屋 { background: #00BCD4; }
+        .category-出售房屋 { background: #E91E63; }
+        .category-其他 { background: #607D8B; }
+        .category-找对象 { background: #E91E63; }
+        .post-content { color: #666; font-size: 13px; line-height: 1.5; margin: 6px 0; white-space: pre-wrap; overflow: hidden; max-height: 60px; }
+        .post-price { font-size: 16px; font-weight: 700; color: #E91E63; margin: 4px 0; }
+        .post-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+        .post-time { font-size: 12px; color: #aaa; }
+        .detail-link { font-size: 12px; color: #667eea; text-decoration: none; }
+        .post-images { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
+        .post-images img { width: 100%; height: 80px; object-fit: cover; border-radius: 6px; }
+        .post-videos video { width: 100%; border-radius: 8px; max-height: 160px; margin: 6px 0; }
+
+        .empty-state { text-align: center; padding: 30px; color: rgba(255,255,255,0.7); font-size: 15px; }
+        .loading { text-align: center; color: white; padding: 40px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top-bar">
+            <a href="/" class="back-link">← 返回首页</a>
+            <div class="top-right" id="topRight"></div>
+        </div>
+
+        <div id="profileContainer" class="loading">加载中...</div>
+        <div class="posts-section" id="postsSection" style="display:none;">
+            <h2>📋 发布的帖子</h2>
+            <div id="postsList"></div>
+        </div>
+    </div>
+
+    <script>
+        const TARGET_USERNAME = {{ username | tojson }};
+        let currentUser = null;
+        let profileUser = null;
+
+        function escapeHtml(t) {
+            if (!t) return '';
+            const d = document.createElement('div'); d.textContent = t; return d.innerHTML;
+        }
+        function formatTime(ts) {
+            const date = new Date(ts), now = new Date(), diff = now - date;
+            if (diff < 60000) return '刚刚';
+            if (diff < 3600000) return Math.floor(diff/60000) + '分钟前';
+            if (diff < 86400000) return Math.floor(diff/3600000) + '小时前';
+            if (diff < 2592000000) return Math.floor(diff/86400000) + '天前';
+            return date.toLocaleDateString('zh-CN');
+        }
+        function getMediaUrl(u) {
+            return u || '';
+        }
+
+        async function init() {
+            await checkLogin();
+            await loadProfile();
+        }
+
+        async function checkLogin() {
+            try {
+                const res = await fetch('/api/check_login');
+                const r = await res.json();
+                if (r.logged_in) currentUser = r.user;
+                renderTopRight();
+            } catch(e) {}
+        }
+
+        function renderTopRight() {
+            const el = document.getElementById('topRight');
+            if (currentUser) {
+                const link = currentUser.role === 'admin'
+                    ? '<a href="/admin">管理后台</a>'
+                    : '<a href="/user_center">个人中心</a>';
+                el.innerHTML = `<span style="color:#667eea;font-weight:600;">${escapeHtml(currentUser.username)}</span> | ${link} | <a href="/dm">💬私信</a>`;
+            } else {
+                el.innerHTML = '<a href="/login">登录</a> | <a href="/register">注册</a>';
+            }
+        }
+
+        async function loadProfile() {
+            const res = await fetch('/api/users/' + encodeURIComponent(TARGET_USERNAME) + '/profile');
+            const r = await res.json();
+            if (!r.success) {
+                document.getElementById('profileContainer').innerHTML = '<div style="text-align:center;color:white;padding:40px;">用户不存在</div>';
+                return;
+            }
+            profileUser = r.user;
+            renderProfile(r.user);
+            renderPosts(r.posts);
+        }
+
+        function renderProfile(u) {
+            const isSelf = currentUser && currentUser.id === u.id;
+            const dmBtn = isSelf
+                ? ''
+                : currentUser
+                    ? `<a href="/dm/${encodeURIComponent(u.username)}" class="dm-btn">💬 发私信</a>`
+                    : `<button class="dm-btn dm-btn-disabled" onclick="alert('请先登录后再发私信')">💬 发私信</button>`;
+
+            document.getElementById('profileContainer').innerHTML = `
+            <div class="profile-card">
+                <div class="avatar">${escapeHtml(u.username.charAt(0).toUpperCase())}</div>
+                <div class="profile-username">${escapeHtml(u.username)}</div>
+                ${u.role === 'admin' ? '<span class="profile-badge">管理员</span>' : ''}
+                <div class="profile-stats">
+                    <div class="stat-item">
+                        <div class="stat-num">${u.posts_count}</div>
+                        <div class="stat-label">发帖</div>
+                    </div>
+                </div>
+                <div class="profile-join">加入于 ${new Date(u.created_at).toLocaleDateString('zh-CN')}</div>
+                ${dmBtn}
+            </div>`;
+        }
+
+        function renderPosts(posts) {
+            const section = document.getElementById('postsSection');
+            const list = document.getElementById('postsList');
+            section.style.display = 'block';
+            if (!posts.length) {
+                list.innerHTML = '<div class="empty-state">还没有发布任何帖子</div>';
+                return;
+            }
+            list.innerHTML = posts.map(post => `
+            <div class="post-card">
+                <div class="post-header">
+                    <h3 class="post-title"><a href="/post/${post.id}">${escapeHtml(post.title)}</a></h3>
+                    <span class="post-category category-${post.category}">${post.category}</span>
+                </div>
+                <div class="post-content">${escapeHtml(post.content)}</div>
+                ${post.price ? `<div class="post-price">¥ ${escapeHtml(post.price)}</div>` : ''}
+                ${post.images && post.images.length ? `
+                    <div class="post-images">
+                        ${post.images.slice(0,3).map(img => `<img src="${getMediaUrl(img)}" alt="图片">`).join('')}
+                    </div>` : ''}
+                ${post.videos && post.videos.length ? `
+                    <div style="margin:6px 0;">
+                        ${post.videos.map(v => `<video src="${getMediaUrl(v)}" controls preload="metadata" style="width:100%;border-radius:8px;max-height:200px;margin-bottom:4px;"></video>`).join('')}
+                    </div>` : ''}
+                <div class="post-meta">
+                    <span class="post-time">${formatTime(post.timestamp)}</span>
+                    <a href="/post/${post.id}" class="detail-link">查看详情 →</a>
+                </div>
+            </div>`).join('');
+        }
+
+        init();
+    </script>
+</body>
+</html>
