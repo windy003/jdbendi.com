@@ -576,6 +576,8 @@
 
         // 通用直传 R2 函数
         async function uploadToR2(file) {
+            // 先读文件内容，避免 Android 异步等待后 content URI 权限过期
+            const buffer = await file.arrayBuffer();
             const presignRes = await fetch('/api/presign', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -584,11 +586,13 @@
             });
             const presign = await presignRes.json();
             if (!presign.success) throw new Error(presign.message);
-            // 不带 Content-Type 头，与预签名保持一致
-            const uploadRes = await fetch(presign.upload_url, {
-                method: 'PUT', body: file
+            await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('PUT', presign.upload_url);
+                xhr.onload = () => xhr.status < 400 ? resolve() : reject(new Error(`R2上传失败: ${xhr.status}`));
+                xhr.onerror = () => reject(new Error('R2上传失败: 网络错误'));
+                xhr.send(buffer);
             });
-            if (!uploadRes.ok) throw new Error(`R2上传失败: ${uploadRes.status}`);
             return presign.public_url;
         }
 

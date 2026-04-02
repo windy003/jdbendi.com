@@ -369,7 +369,7 @@ def setup_r2_cors():
             CORSConfiguration={
                 'CORSRules': [{
                     'AllowedOrigins': origins,
-                    'AllowedMethods': ['GET', 'PUT', 'HEAD'],
+                    'AllowedMethods': ['GET', 'PUT', 'HEAD', 'OPTIONS'],
                     'AllowedHeaders': ['*'],
                     'ExposeHeaders': ['ETag'],
                     'MaxAgeSeconds': 86400
