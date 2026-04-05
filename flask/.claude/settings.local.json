@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(python app.py:*)",
+      "Bash(dir /s /b post.json)",
+      "Bash(del \"D:\\files\\using\\jd.windyzhou.org\\posts.json\")",
+      "Bash(rm:*)",
+      "Bash(dir:*)",
+      "Bash(sqlite3:*)",
+      "Bash(python:*)",
+      "Bash(copy:*)",
+      "Bash(curl -L \"https://cdn.jsdelivr.net/npm/compressorjs@1.1.1/dist/compressor.min.js\" -o \"D:/files/using/Web/jdbendi.com/static/compressor.min.js\")"
+    ]
+  }
+}
