@@ -1,1 +1,1 @@
-cd  /d  "D:\files\using\Web\jdbendi.com"  && start /b  pythonw  "D:\files\using\Web\jdbendi.com\app.py"  
+cd  /d  "D:\files\using\Web\jdbendi.com\flask"  && start /b  pythonw  "D:\files\using\Web\jdbendi.com\flask\app.py"  
