@@ -636,7 +636,12 @@
 
         document.getElementById('filterCategory').addEventListener('change', e => loadPosts(e.target.value));
 
-        checkLoginStatus().then(() => loadPosts());
+        // 并行发起：帖子加载不依赖登录状态，无需等待
+        loadPosts();
+        checkLoginStatus().then(() => {
+            // 登录状态确认后重渲，确保"私信"按钮正确显示
+            if (posts.length > 0) renderPosts();
+        });
     </script>
 </body>
 </html>
