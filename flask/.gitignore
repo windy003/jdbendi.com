@@ -1,0 +1,10 @@
+.env
+*.json
+*.db
+uploads/
+*.backup
+__pycache__/
+androidApp/app/build/
+androidApp/app/release/
+androidApp/.gradle/
+androidApp/.idea/
