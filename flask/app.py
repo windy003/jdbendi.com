@@ -14,6 +14,10 @@ import threading
 import queue
 import boto3
 from botocore.client import Config
+import mimetypes
+
+# 注册 .apk 的 MIME 类型，避免静态文件被当成 application/octet-stream 下载成 .bin
+mimetypes.add_type('application/vnd.android.package-archive', '.apk')
 
 # 加载环境变量
 load_dotenv()
