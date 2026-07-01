@@ -212,7 +212,7 @@
                     </div>` : ''}
                 ${post.videos && post.videos.length ? `
                     <div style="margin:6px 0;">
-                        ${post.videos.map(v => `<video src="${getMediaUrl(v)}" controls preload="metadata" style="width:100%;border-radius:8px;max-height:200px;margin-bottom:4px;"></video>`).join('')}
+                        ${post.videos.map(v => `<video src="${getMediaUrl(v)}" controls preload="metadata" muted playsinline onloadedmetadata="this.currentTime=0.1" style="width:100%;border-radius:8px;max-height:200px;margin-bottom:4px;"></video>`).join('')}
                     </div>` : ''}
                 <div class="post-meta">
                     <span class="post-time">${formatTime(post.timestamp)}</span>

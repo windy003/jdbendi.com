@@ -681,7 +681,7 @@
             const container = document.getElementById('videoPreview');
             container.innerHTML = uploadedVideos.map((url, index) => `
                 <div class="image-preview-item">
-                    <video src="${getMediaUrl(url)}" style="width:100%;height:80px;object-fit:cover;border-radius:6px;" preload="metadata"></video>
+                    <video src="${getMediaUrl(url)}" style="width:100%;height:80px;object-fit:cover;border-radius:6px;" preload="metadata" muted playsinline onloadedmetadata="this.currentTime=0.1"></video>
                     <button type="button" class="remove-image" onclick="removeVideo(${index})">×</button>
                 </div>
             `).join('');
@@ -751,7 +751,7 @@
                         ` : ''}
                         ${post.videos && post.videos.length > 0 ? `
                             <div class="post-videos-grid">
-                                ${post.videos.map(v => `<div class="video-thumb" onclick="window.open('${getMediaUrl(v)}')"><video src="${getMediaUrl(v)}" preload="metadata" muted playsinline></video><span class="video-play-icon">▶</span></div>`).join('')}
+                                ${post.videos.map(v => `<div class="video-thumb" onclick="window.open('${getMediaUrl(v)}')"><video src="${getMediaUrl(v)}" preload="metadata" muted playsinline onloadedmetadata="this.currentTime=0.1"></video><span class="video-play-icon">▶</span></div>`).join('')}
                             </div>
                         ` : ''}
                         <div class="post-footer">

@@ -515,7 +515,7 @@
                         </div>` : ''}
                     ${post.videos && post.videos.length ? `
                         <div class="post-videos">
-                            ${post.videos.map(v => `<div class="video-thumb" onclick="playVideoFullscreen('${getMediaUrl(v)}')"><video src="${getMediaUrl(v)}" preload="metadata" muted playsinline></video><span class="video-play-icon">▶</span></div>`).join('')}
+                            ${post.videos.map(v => `<div class="video-thumb" onclick="playVideoFullscreen('${getMediaUrl(v)}')"><video src="${getMediaUrl(v)}" preload="metadata" muted playsinline onloadedmetadata="this.currentTime=0.1"></video><span class="video-play-icon">▶</span></div>`).join('')}
                         </div>` : ''}
                     <div class="post-footer">
                         ${post.contact ? `<div class="post-contact">📞 ${escapeHtml(post.contact)}</div>` : ''}

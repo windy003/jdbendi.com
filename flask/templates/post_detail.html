@@ -367,7 +367,7 @@
                     </div>` : ''}
                 ${(p.videos||[]).length ? `
                     <div class="post-videos">
-                        ${p.videos.map(v => `<div class="video-thumb" onclick="playVideoFullscreen('${getMediaUrl(v)}')"><video src="${getMediaUrl(v)}" preload="metadata" muted playsinline></video><span class="video-play-icon">▶</span></div>`).join('')}
+                        ${p.videos.map(v => `<div class="video-thumb" onclick="playVideoFullscreen('${getMediaUrl(v)}')"><video src="${getMediaUrl(v)}" preload="metadata" muted playsinline onloadedmetadata="this.currentTime=0.1"></video><span class="video-play-icon">▶</span></div>`).join('')}
                     </div>` : ''}
                 ${p.contact ? `<div class="post-contact-box">📞 联系方式：${escapeHtml(p.contact)}</div>` : ''}
             </div>`;
