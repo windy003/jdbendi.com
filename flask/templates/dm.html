@@ -230,13 +230,30 @@
         function handleKey(e) {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
         }
+        let lbHistoryPushed = false;
         function openLightbox(src) {
             document.getElementById('lightboxImg').src = src;
             document.getElementById('imgLightbox').classList.add('active');
+            lbHistoryPushed = true;
+            history.pushState({ lightbox: true }, '');
         }
         function closeLightbox() {
+            if (lbHistoryPushed) {
+                lbHistoryPushed = false;
+                history.back();
+            } else {
+                hideLightbox();
+            }
+        }
+        function hideLightbox() {
             document.getElementById('imgLightbox').classList.remove('active');
         }
+        window.addEventListener('popstate', () => {
+            if (document.getElementById('imgLightbox').classList.contains('active')) {
+                lbHistoryPushed = false;
+                hideLightbox();
+            }
+        });
         document.getElementById('imgLightbox').addEventListener('click', e => {
             if (e.target.id === 'imgLightbox') closeLightbox();
         });

@@ -225,6 +225,7 @@
         let lbImages = [], lbIndex = 0, lbTouchStartX = 0, lbTouchStartY = 0;
         const postImagesMap = {};
 
+        let lbHistoryPushed = false;
         function openLightbox(postId, idx) {
             lbImages = postImagesMap[postId] || [];
             if (!lbImages.length) return;
@@ -232,11 +233,27 @@
             document.getElementById('lightbox').classList.add('active');
             document.body.style.overflow = 'hidden';
             updateLightbox();
+            lbHistoryPushed = true;
+            history.pushState({ lightbox: true }, '');
         }
         function closeLightbox() {
+            if (lbHistoryPushed) {
+                lbHistoryPushed = false;
+                history.back();
+            } else {
+                hideLightbox();
+            }
+        }
+        function hideLightbox() {
             document.getElementById('lightbox').classList.remove('active');
             document.body.style.overflow = '';
         }
+        window.addEventListener('popstate', () => {
+            if (document.getElementById('lightbox').classList.contains('active')) {
+                lbHistoryPushed = false;
+                hideLightbox();
+            }
+        });
         function getMediaUrl(u) {
             return u || '';
         }
