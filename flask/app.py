@@ -12,8 +12,7 @@ import time
 import re
 import threading
 import queue
-import boto3
-from botocore.client import Config
+import oss2
 import mimetypes
 
 # 注册 .apk 的 MIME 类型，避免静态文件被当成 application/octet-stream 下载成 .bin
@@ -83,12 +82,12 @@ MAX_IMAGES = 9  # 每条信息最多上传9张图片
 MAX_VIDEOS = 3  # 每条信息最多上传3个视频
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 限制500MB（支持视频）
 
-# Cloudflare R2 配置
-R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '')
-R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '')
-R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '')
-R2_BUCKET_NAME = os.getenv('R2_BUCKET_NAME', '')
-R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL', '')  # 例如: https://files.jdbendi.com
+# 阿里云 OSS 配置
+OSS_ACCESS_KEY_ID = os.getenv('OSS_ACCESS_KEY_ID', '')
+OSS_ACCESS_KEY_SECRET = os.getenv('OSS_ACCESS_KEY_SECRET', '')
+OSS_BUCKET_NAME = os.getenv('OSS_BUCKET_NAME', '')
+OSS_ENDPOINT = os.getenv('OSS_ENDPOINT', '')  # 例如: oss-cn-hangzhou.aliyuncs.com
+OSS_PUBLIC_URL = os.getenv('OSS_PUBLIC_URL', '')  # 例如: https://jdbendi.oss-cn-hangzhou.aliyuncs.com
 # ========================================================
 
 # 数据库文件路径
@@ -318,71 +317,54 @@ def get_content_type(ext):
     }
     return types.get(ext.lower(), 'application/octet-stream')
 
-# ========== Cloudflare R2 辅助函数 ==========
-def get_r2_client():
-    """获取 Cloudflare R2 S3 兼容客户端"""
-    return boto3.client(
-        's3',
-        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
-        aws_access_key_id=R2_ACCESS_KEY_ID,
-        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-        config=Config(signature_version='s3v4'),
-        region_name='auto'
-    )
+# ========== 阿里云 OSS 辅助函数 ==========
+def get_oss_bucket():
+    """获取阿里云 OSS Bucket 客户端"""
+    auth = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
+    return oss2.Bucket(auth, f'https://{OSS_ENDPOINT}', OSS_BUCKET_NAME)
 
-def upload_to_r2(file_data, filename, content_type):
-    """上传文件到 R2，返回公开 URL"""
-    r2 = get_r2_client()
-    r2.put_object(
-        Bucket=R2_BUCKET_NAME,
-        Key=filename,
-        Body=file_data,
-        ContentType=content_type
-    )
-    return f"{R2_PUBLIC_URL}/{filename}"
+def upload_to_oss(file_data, filename, content_type):
+    """上传文件到 OSS，返回公开 URL"""
+    bucket = get_oss_bucket()
+    bucket.put_object(filename, file_data, headers={'Content-Type': content_type})
+    return f"{OSS_PUBLIC_URL}/{filename}"
 
-def delete_from_r2(key):
-    """从 R2 删除指定 key 的文件"""
+def delete_from_oss(key):
+    """从 OSS 删除指定 key 的文件"""
     try:
-        r2 = get_r2_client()
-        r2.delete_object(Bucket=R2_BUCKET_NAME, Key=key)
+        bucket = get_oss_bucket()
+        bucket.delete_object(key)
     except Exception as e:
-        print(f"R2 删除失败: {e}")
+        print(f"OSS 删除失败: {e}")
 
 def delete_media(url):
-    """从 R2 删除媒体文件（通过 URL 提取 key）"""
+    """从 OSS 删除媒体文件（通过 URL 提取 key）"""
     if not url or not url.startswith('http'):
         return
     key = url.split('/')[-1].split('?')[0]
-    delete_from_r2(key)
+    delete_from_oss(key)
 
-def setup_r2_cors():
-    """启动时自动为 R2 存储桶配置 CORS，允许网站直传"""
+def setup_oss_cors():
+    """启动时自动为 OSS 存储桶配置 CORS，允许网站直传"""
     try:
-        site_origin = R2_PUBLIC_URL.rsplit('/', 1)[0] if '/' in R2_PUBLIC_URL.replace('https://', '').replace('http://', '') else R2_PUBLIC_URL
-        # 取主站域名（从 PUBLIC_URL 推导，或直接加常见来源）
         origins = [
             'https://jdbendi.com',
             'https://www.jdbendi.com',
             'http://localhost:5002',
             'http://127.0.0.1:5002',
         ]
-        r2 = get_r2_client()
-        r2.put_bucket_cors(
-            Bucket=R2_BUCKET_NAME,
-            CORSConfiguration={
-                'CORSRules': [{
-                    'AllowedOrigins': origins,
-                    'AllowedMethods': ['GET', 'PUT', 'HEAD', 'OPTIONS'],
-                    'AllowedHeaders': ['*'],
-                    'ExposeHeaders': ['ETag'],
-                    'MaxAgeSeconds': 86400
-                }]
-            }
+        bucket = get_oss_bucket()
+        rule = oss2.models.CorsRule(
+            allowed_origins=origins,
+            allowed_methods=['GET', 'PUT', 'HEAD'],
+            allowed_headers=['*'],
+            expose_headers=['ETag'],
+            max_age_seconds=86400
         )
-        print('R2 CORS 配置成功')
+        bucket.put_bucket_cors(oss2.models.BucketCors(rules=[rule]))
+        print('OSS CORS 配置成功')
     except Exception as e:
-        print(f'R2 CORS 配置失败（不影响运行）: {e}')
+        print(f'OSS CORS 配置失败（不影响运行）: {e}')
 # ============================================
 
 # 权限装饰器
@@ -695,7 +677,7 @@ def update_post(post_id):
     new_images = data.get('images', [])
     new_videos = data.get('videos', [])
 
-    # 删除不再使用的媒体文件（兼容 R2 URL 和本地文件）
+    # 删除不再使用的媒体文件
     for media in old_images:
         if media not in new_images:
             delete_media(media)
@@ -778,7 +760,7 @@ def delete_post(post_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    # 先获取图片和视频列表，删除媒体文件（兼容 R2 URL 和本地文件）
+    # 先获取图片和视频列表，删除媒体文件
     cursor.execute('SELECT images, videos FROM posts WHERE id = ?', (post_id,))
     row = cursor.fetchone()
     if row:
@@ -796,7 +778,7 @@ def delete_post(post_id):
 
     return jsonify({'success': True, 'message': '删除成功'})
 
-# API：获取 R2 预签名上传 URL（浏览器直传 R2，绕过服务器）
+# API：获取 OSS 预签名上传 URL（浏览器直传 OSS，绕过服务器）
 @app.route('/api/presign', methods=['POST'])
 @login_required
 def presign_upload():
@@ -817,17 +799,10 @@ def presign_upload():
     key = f"{uuid.uuid4().hex}.{ext}"
 
     try:
-        r2 = get_r2_client()
-        # 不签名 ContentType，避免浏览器 OPTIONS 预检失败
-        upload_url = r2.generate_presigned_url(
-            'put_object',
-            Params={
-                'Bucket': R2_BUCKET_NAME,
-                'Key': key,
-            },
-            ExpiresIn=3600
-        )
-        public_url = f"{R2_PUBLIC_URL}/{key}"
+        bucket = get_oss_bucket()
+        # 不签名 Content-Type，避免浏览器 OPTIONS 预检失败
+        upload_url = bucket.sign_url('PUT', key, 3600, slash_safe=True)
+        public_url = f"{OSS_PUBLIC_URL}/{key}"
         return jsonify({
             'success': True,
             'upload_url': upload_url,
@@ -863,7 +838,7 @@ def upload_image():
         filename = f"{uuid.uuid4().hex}.{ext}"
         content_type = get_content_type(ext)
         file_data = file.read()
-        url = upload_to_r2(file_data, filename, content_type)
+        url = upload_to_oss(file_data, filename, content_type)
         return jsonify({'success': True, 'url': url, 'filename': url, 'is_video': is_video})
 
     except Exception as e:
@@ -1452,7 +1427,7 @@ def send_message(other_user_id):
             return jsonify({'success': False, 'message': '消息不能超过1000字'}), 400
 
     elif content_type in ('image', 'video'):
-        # 前端已直传 R2，media_url 由前端传入
+        # 前端已直传 OSS，media_url 由前端传入
         if not media_url:
             conn.close()
             return jsonify({'success': False, 'message': '缺少媒体文件URL'}), 400
@@ -1537,7 +1512,7 @@ if __name__ == '__main__':
     # 初始化数据库
     init_db()
 
-    # 配置 R2 CORS（允许网站直传文件）
-    setup_r2_cors()
+    # 配置 OSS CORS（允许网站直传文件）
+    setup_oss_cors()
 
     app.run(debug=True, host='0.0.0.0', port=5002, threaded=True)

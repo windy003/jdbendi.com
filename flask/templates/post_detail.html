@@ -131,6 +131,31 @@
         }
         #lbPrev { left: 8px; } #lbNext { right: 8px; }
 
+        /* 视频缩略图（大小与图片缩略图一致，点击后全屏播放） */
+        .post-videos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+        .post-videos .video-thumb {
+            position: relative; height: 110px; border-radius: 8px; overflow: hidden;
+            cursor: pointer; background: #000;
+        }
+        .post-videos .video-thumb video { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+        .post-videos .video-thumb .video-play-icon {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            color: #fff; font-size: 26px; text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+        }
+
+        /* 视频全屏播放层 */
+        #videoLightbox {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 9999; align-items: center; justify-content: center;
+        }
+        #videoLightbox.active { display: flex; }
+        #videoLightboxPlayer { max-width: 100%; max-height: 100%; }
+        #videoLightboxClose {
+            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.2);
+            border: none; color: white; font-size: 22px; width: 42px; height: 42px;
+            border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 1;
+        }
+
         @media (min-width: 768px) {
             .container { padding: 20px; }
             .post-images img { height: 140px; }
@@ -161,6 +186,12 @@
         <button class="lb-nav" id="lbPrev" onclick="lbNav(-1)">&#8249;</button>
         <img id="lightboxImg" alt="">
         <button class="lb-nav" id="lbNext" onclick="lbNav(1)">&#8250;</button>
+    </div>
+
+    <!-- 视频全屏播放层 -->
+    <div id="videoLightbox">
+        <button id="videoLightboxClose" onclick="closeVideoLightbox()">✕</button>
+        <video id="videoLightboxPlayer" controls playsinline></video>
     </div>
 
     <script>
@@ -215,6 +246,41 @@
                 lbHistoryPushed = false;
                 hideLightbox();
             }
+            if (document.getElementById('videoLightbox').classList.contains('active')) {
+                vlbHistoryPushed = false;
+                hideVideoLightbox();
+            }
+        });
+
+        // 视频全屏播放
+        let vlbHistoryPushed = false;
+        function playVideoFullscreen(src) {
+            const player = document.getElementById('videoLightboxPlayer');
+            player.src = src;
+            document.getElementById('videoLightbox').classList.add('active');
+            document.body.style.overflow = 'hidden';
+            player.play().catch(() => {});
+            vlbHistoryPushed = true;
+            history.pushState({ videoLightbox: true }, '');
+        }
+        function closeVideoLightbox() {
+            if (vlbHistoryPushed) {
+                vlbHistoryPushed = false;
+                history.back();
+            } else {
+                hideVideoLightbox();
+            }
+        }
+        function hideVideoLightbox() {
+            const player = document.getElementById('videoLightboxPlayer');
+            player.pause();
+            player.src = '';
+            document.getElementById('videoLightbox').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+        document.getElementById('videoLightbox').addEventListener('click', e => { if (e.target.id === 'videoLightbox') closeVideoLightbox(); });
+        document.addEventListener('keydown', e => {
+            if (document.getElementById('videoLightbox').classList.contains('active') && e.key === 'Escape') closeVideoLightbox();
         });
         function getMediaUrl(u) {
             return u || '';
@@ -300,8 +366,8 @@
                         ${lbImages.map((img,i) => `<img src="${getMediaUrl(img)}" alt="图片" onclick="openLightbox(${i})">`).join('')}
                     </div>` : ''}
                 ${(p.videos||[]).length ? `
-                    <div style="margin:12px 0;">
-                        ${p.videos.map(v => `<video src="${getMediaUrl(v)}" controls preload="metadata" style="width:100%;border-radius:8px;max-height:260px;margin-bottom:8px;"></video>`).join('')}
+                    <div class="post-videos">
+                        ${p.videos.map(v => `<div class="video-thumb" onclick="playVideoFullscreen('${getMediaUrl(v)}')"><video src="${getMediaUrl(v)}" preload="metadata" muted playsinline></video><span class="video-play-icon">▶</span></div>`).join('')}
                     </div>` : ''}
                 ${p.contact ? `<div class="post-contact-box">📞 联系方式：${escapeHtml(p.contact)}</div>` : ''}
             </div>`;

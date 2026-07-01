@@ -453,6 +453,12 @@
             cursor: pointer;
         }
 
+        /* 帖子里的视频缩略图（大小与图片缩略图一致，点击后新标签全屏播放） */
+        .post-videos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0; }
+        .post-videos-grid .video-thumb { position: relative; height: 80px; border-radius: 6px; overflow: hidden; cursor: pointer; background: #000; }
+        .post-videos-grid .video-thumb video { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+        .post-videos-grid .video-thumb .video-play-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 22px; text-shadow: 0 1px 4px rgba(0,0,0,0.7); }
+
         @media (min-width: 768px) {
             .container {
                 max-width: 600px;
@@ -933,8 +939,8 @@
                             </div>
                         ` : ''}
                         ${post.videos && post.videos.length > 0 ? `
-                            <div style="margin:6px 0;">
-                                ${post.videos.map(v => `<video src="${getMediaUrl(v)}" controls preload="metadata" style="max-width:100%;border-radius:6px;max-height:120px;"></video>`).join('')}
+                            <div class="post-videos-grid">
+                                ${post.videos.map(v => `<div class="video-thumb" onclick="window.open('${getMediaUrl(v)}')"><video src="${getMediaUrl(v)}" preload="metadata" muted playsinline></video><span class="video-play-icon">▶</span></div>`).join('')}
                             </div>
                         ` : ''}
                         <div class="post-footer">
