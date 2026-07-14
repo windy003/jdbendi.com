@@ -14,6 +14,9 @@ import threading
 import queue
 import oss2
 import mimetypes
+import subprocess
+import tempfile
+import shutil
 
 # 注册 .apk 的 MIME 类型，避免静态文件被当成 application/octet-stream 下载成 .bin
 mimetypes.add_type('application/vnd.android.package-archive', '.apk')
@@ -808,10 +811,36 @@ def presign_upload():
             'upload_url': upload_url,
             'public_url': public_url,
             'content_type': content_type,
-            'is_video': is_video
+            'is_video': is_video,
+            'key': key
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'生成上传链接失败: {str(e)}'}), 500
+
+# API：直传 OSS 后，服务端补写正确的 Content-Type
+# 直传时故意不签名 Content-Type（避免浏览器 OPTIONS 预检失败），导致视频对象
+# 在 OSS 上被存成 application/octet-stream，浏览器 <video> 标签因此拒绝解码/渲染缩略图。
+# 服务端调用 OSS 无跨域限制，用这一步把类型改回正确的 video/*。
+@app.route('/api/fix_content_type', methods=['POST'])
+@login_required
+def fix_content_type():
+    data = request.get_json()
+    key = data.get('key', '')
+
+    if not re.match(r'^[0-9a-f]{32}\.[A-Za-z0-9]+$', key):
+        return jsonify({'success': False, 'message': '无效的文件标识'}), 400
+
+    ext = key.rsplit('.', 1)[1].lower()
+    if ext not in ALLOWED_VIDEO_EXTENSIONS:
+        return jsonify({'success': False, 'message': '不支持的文件类型'}), 400
+
+    content_type = get_content_type(ext)
+    try:
+        bucket = get_oss_bucket()
+        bucket.update_object_meta(key, headers={'Content-Type': content_type})
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'更新失败: {str(e)}'}), 500
 
 # API：上传图片（小文件兼容，仍保留供私信小图使用）
 @app.route('/api/upload', methods=['POST'])
