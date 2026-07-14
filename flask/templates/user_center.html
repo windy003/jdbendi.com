@@ -136,7 +136,7 @@
         }
         .fullscreen-btn.active {
             position: fixed;
-            top: 15px;
+            bottom: 15px;
             right: 15px;
             z-index: 2001;
             background: #fff;
@@ -332,6 +332,18 @@
             border-top: 1px solid #ddd;
         }
 
+        .post-info {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .post-actions {
+            display: flex;
+            gap: 5px;
+            flex-shrink: 0;
+            margin-left: 10px;
+        }
+
         .post-contact {
             font-size: 13px;
             color: #667eea;
@@ -349,7 +361,7 @@
             font-size: 12px;
             cursor: pointer;
             border: none;
-            margin-left: 5px;
+            white-space: nowrap;
         }
 
         .edit-btn {
@@ -832,11 +844,11 @@
                             </div>
                         ` : ''}
                         <div class="post-footer">
-                            <div>
+                            <div class="post-info">
                                 ${post.contact ? `<div class="post-contact">📞 ${escapeHtml(post.contact)}</div>` : ''}
                                 <div class="post-time">${formatTime(post.timestamp)}</div>
                             </div>
-                            <div>
+                            <div class="post-actions">
                                 <button class="edit-btn" onclick="editPost(${post.id})">编辑</button>
                                 <button class="delete-btn" onclick="deletePost(${post.id})">删除</button>
                             </div>
