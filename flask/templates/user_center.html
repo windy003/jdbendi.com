@@ -112,6 +112,57 @@
             min-height: 100px;
         }
 
+        .content-label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .content-label-row label {
+            margin-bottom: 0;
+        }
+        .fullscreen-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #667eea;
+            padding: 4px 10px;
+            line-height: 1;
+        }
+        .fullscreen-btn:hover {
+            color: #4a5fd1;
+        }
+        .fullscreen-btn.active {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            z-index: 2001;
+            background: #fff;
+            border: 2px solid #667eea;
+            border-radius: 20px;
+            padding: 8px 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        textarea#content.fullscreen-mode {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 2000;
+            border-radius: 0;
+            border: none;
+            font-size: 18px;
+            padding: 20px;
+            box-sizing: border-box;
+            resize: none;
+        }
+        body.content-fullscreen-active {
+            overflow: hidden;
+        }
+
         .btn {
             width: 100%;
             padding: 14px;
@@ -234,7 +285,7 @@
         .category-出售房屋 { background: #E91E63; }
         .category-其他 { background: #607D8B; }
         .category-找对象 { background: #E91E63; }
-        .category-维权曝光 { background: #F44336; }
+        .category-维权\/曝光 { background: #F44336; }
 
         .post-content {
             color: #666;
@@ -392,7 +443,7 @@
                         <option value="出租房屋">出租房屋</option>
                         <option value="出售房屋">出售房屋</option>
                         <option value="找对象">找对象</option>
-                        <option value="维权曝光">维权曝光</option>
+                        <option value="维权/曝光">维权/曝光</option>
                         <option value="其他">其他</option>
                     </select>
                 </div>
@@ -401,7 +452,10 @@
                     <input type="text" id="title" placeholder="请输入标题" required>
                 </div>
                 <div class="form-group">
-                    <label for="content">详细内容</label>
+                    <div class="content-label-row">
+                        <label for="content">详细内容</label>
+                        <button type="button" id="contentFullscreenBtn" class="fullscreen-btn" onclick="toggleContentFullscreen()" title="全屏编辑详细内容">全屏编辑详细内容</button>
+                    </div>
                     <textarea id="content" placeholder="请输入详细信息..." required></textarea>
                 </div>
                 <div class="form-group">
@@ -544,6 +598,26 @@
                 setTimeout(() => { if (currentUser) startSSE(); }, 30000);
             };
         }
+
+        // 详细内容全屏编辑
+        function toggleContentFullscreen() {
+            const textarea = document.getElementById('content');
+            const btn = document.getElementById('contentFullscreenBtn');
+            const isFullscreen = textarea.classList.toggle('fullscreen-mode');
+            btn.classList.toggle('active', isFullscreen);
+            document.body.classList.toggle('content-fullscreen-active', isFullscreen);
+            btn.textContent = isFullscreen ? '退出全屏编辑' : '全屏编辑详细内容';
+            btn.title = btn.textContent;
+            if (isFullscreen) textarea.focus();
+        }
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const textarea = document.getElementById('content');
+                if (textarea && textarea.classList.contains('fullscreen-mode')) {
+                    toggleContentFullscreen();
+                }
+            }
+        });
 
         // 退出登录
         async function logout() {
