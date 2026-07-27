@@ -253,7 +253,7 @@
     </div>
 
     <script>
-        let posts = [];
+        let posts = {{ initial_posts_json | safe }};
         let currentUser = null;
         let lbImages = [], lbIndex = 0, lbTouchStartX = 0, lbTouchStartY = 0;
         const postImagesMap = {};
@@ -722,8 +722,8 @@
 
         document.getElementById('filterCategory').addEventListener('change', e => loadPosts(e.target.value));
 
-        // 并行发起：帖子加载不依赖登录状态，无需等待
-        loadPosts();
+        // 首屏帖子数据已由服务端直接嵌入 HTML，无需再发一次 /api/posts 请求
+        renderPosts();
         checkLoginStatus().then(() => {
             // 登录状态确认后重渲，确保"私信"按钮正确显示
             if (posts.length > 0) renderPosts();

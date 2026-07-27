@@ -420,7 +420,10 @@ def post_owner_or_admin(f):
 # 路由：前台页面
 @app.route('/')
 def index():
-    return render_template('index.html', admin_contact=ADMIN_CONTACT)
+    initial_posts = query_posts('全部')
+    # 转成 JSON 字符串直接嵌入首屏 HTML，避免页面打开后再多一次 /api/posts 网络往返
+    initial_posts_json = json.dumps(initial_posts, ensure_ascii=False).replace('</', '<\\/')
+    return render_template('index.html', admin_contact=ADMIN_CONTACT, initial_posts_json=initial_posts_json)
 
 # 路由：帖子详情页
 @app.route('/post/<int:post_id>')
@@ -452,12 +455,10 @@ def admin():
 def admin_users():
     return render_template('admin_users.html')
 
-# API：获取所有信息
-@app.route('/api/posts', methods=['GET'])
-def get_posts():
+# 查询帖子列表（首页服务端渲染和 /api/posts 共用）
+def query_posts(category='全部'):
     conn = get_db()
     cursor = conn.cursor()
-    category = request.args.get('category', '全部')
 
     if category != '全部':
         cursor.execute('''
@@ -494,6 +495,13 @@ def get_posts():
         posts.append(post)
 
     conn.close()
+    return posts
+
+# API：获取所有信息
+@app.route('/api/posts', methods=['GET'])
+def get_posts():
+    category = request.args.get('category', '全部')
+    posts = query_posts(category)
     return jsonify({'success': True, 'data': posts})
 
 # API：获取单条信息详情
@@ -1544,4 +1552,15 @@ if __name__ == '__main__':
     # 配置 OSS CORS（允许网站直传文件）
     setup_oss_cors()
 
-    app.run(debug=True, host='0.0.0.0', port=5002, threaded=True)
+    DEBUG_MODE = False  # 改成 False 即可切换为 waitress 生产模式运行
+
+    if DEBUG_MODE:
+        app.run(
+            debug=True,
+            host='0.0.0.0',
+            port=5002,
+            threaded=True
+        )
+    else:
+        from waitress import serve
+        serve(app, host='0.0.0.0', port=5002, threads=8)
