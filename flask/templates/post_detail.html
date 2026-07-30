@@ -286,6 +286,12 @@
         function getMediaUrl(u) {
             return u || '';
         }
+        // 有修改时间则显示"修改时间"，否则显示"发布时间"
+        function postTimeLabel(post) {
+            return post.updated_at
+                ? '修改时间：' + formatTime(post.updated_at)
+                : '发布时间：' + formatTime(post.timestamp);
+        }
 
         function updateLb() {
             document.getElementById('lightboxImg').src = getMediaUrl(lbImages[lbIdx]);
@@ -357,7 +363,7 @@
                 <div class="post-meta">
                     发布者：<a href="/user/${encodeURIComponent(p.author || '')}" style="color:#667eea;font-weight:600;text-decoration:none;">${escapeHtml(p.author || '匿名')}</a>
                     ${p.author && currentUser && p.author !== currentUser.username ? `<a href="/dm/${encodeURIComponent(p.author)}" style="margin-left:8px;font-size:12px;color:#764ba2;font-weight:600;text-decoration:none;">💬私信</a>` : ''}
-                    &nbsp;·&nbsp; ${formatTime(p.timestamp)}
+                    &nbsp;·&nbsp; ${postTimeLabel(p)}
                 </div>
                 <div class="post-content">${escapeHtml(p.content)}</div>
                 ${p.price ? `<div class="post-price">¥ ${escapeHtml(p.price)}</div>` : ''}

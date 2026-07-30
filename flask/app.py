@@ -120,7 +120,8 @@ def init_db():
             price TEXT,
             user_id INTEGER,
             location TEXT,
-            videos TEXT
+            videos TEXT,
+            updated_at INTEGER
         )
     ''')
 
@@ -147,6 +148,12 @@ def init_db():
         cursor.execute("SELECT videos FROM posts LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE posts ADD COLUMN videos TEXT")
+
+    # 如果表已存在但没有updated_at字段，则添加updated_at字段（记录修改时间，NULL表示未修改过）
+    try:
+        cursor.execute("SELECT updated_at FROM posts LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE posts ADD COLUMN updated_at INTEGER")
 
     # 创建users表
     cursor.execute('''
@@ -465,14 +472,14 @@ def query_posts(category='全部'):
             SELECT p.*, u.username as author,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
             FROM posts p LEFT JOIN users u ON p.user_id = u.id
-            WHERE p.category = ? ORDER BY p.timestamp DESC
+            WHERE p.category = ? ORDER BY COALESCE(p.updated_at, p.timestamp) DESC
         ''', (category,))
     else:
         cursor.execute('''
             SELECT p.*, u.username as author,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
             FROM posts p LEFT JOIN users u ON p.user_id = u.id
-            ORDER BY p.timestamp DESC
+            ORDER BY COALESCE(p.updated_at, p.timestamp) DESC
         ''')
 
     posts = []
@@ -486,6 +493,7 @@ def query_posts(category='全部'):
             'images': json.loads(row['images']) if row['images'] else [],
             'videos': json.loads(row['videos']) if row['videos'] else [],
             'timestamp': row['timestamp'],
+            'updated_at': row['updated_at'] if 'updated_at' in row.keys() else None,
             'price': row['price'] if 'price' in row.keys() else None,
             'location': row['location'] if 'location' in row.keys() else None,
             'author': row['author'] if 'author' in row.keys() else None,
@@ -527,6 +535,7 @@ def get_post(post_id):
         'images': json.loads(row['images']) if row['images'] else [],
         'videos': json.loads(row['videos']) if row['videos'] else [],
         'timestamp': row['timestamp'],
+        'updated_at': row['updated_at'] if 'updated_at' in row.keys() else None,
         'price': row['price'] if 'price' in row.keys() else None,
         'location': row['location'] if 'location' in row.keys() else None,
         'author': row['author'] if 'author' in row.keys() else None,
@@ -699,10 +708,13 @@ def update_post(post_id):
     images_json = json.dumps(new_images)
     videos_json = json.dumps(new_videos)
 
+    # 记录修改时间（保留原始发布时间 timestamp 不变），用于排序和显示"修改时间"
+    now = int(time.time() * 1000)
+
     # 更新数据库记录
     cursor.execute('''
         UPDATE posts
-        SET category = ?, title = ?, content = ?, contact = ?, images = ?, videos = ?, price = ?, location = ?
+        SET category = ?, title = ?, content = ?, contact = ?, images = ?, videos = ?, price = ?, location = ?, updated_at = ?
         WHERE id = ?
     ''', (
         data.get('category'),
@@ -713,6 +725,7 @@ def update_post(post_id):
         videos_json,
         data.get('price'),
         data.get('location'),
+        now,
         post_id
     ))
 
@@ -728,6 +741,7 @@ def update_post(post_id):
         'images': new_images,
         'videos': new_videos,
         'timestamp': data.get('timestamp'),
+        'updated_at': now,
         'price': data.get('price'),
         'location': data.get('location')
     }
@@ -741,7 +755,7 @@ def get_my_posts():
     user_id = session.get('user_id')
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM posts WHERE user_id = ? ORDER BY timestamp DESC', (user_id,))
+    cursor.execute('SELECT * FROM posts WHERE user_id = ? ORDER BY COALESCE(updated_at, timestamp) DESC', (user_id,))
 
     posts = []
     for row in cursor.fetchall():
@@ -754,6 +768,7 @@ def get_my_posts():
             'images': json.loads(row['images']) if row['images'] else [],
             'videos': json.loads(row['videos']) if row['videos'] else [],
             'timestamp': row['timestamp'],
+            'updated_at': row['updated_at'] if 'updated_at' in row.keys() else None,
             'price': row['price'] if 'price' in row.keys() else None,
             'user_id': row['user_id'],
             'location': row['location'] if 'location' in row.keys() else None
@@ -1302,10 +1317,10 @@ def get_user_profile(username):
     # 获取该用户的帖子
     cursor.execute('''
         SELECT p.id, p.category, p.title, p.content, p.images, p.videos,
-               p.timestamp, p.price, p.location,
+               p.timestamp, p.updated_at, p.price, p.location,
                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
         FROM posts p WHERE p.user_id = ?
-        ORDER BY p.timestamp DESC LIMIT 50
+        ORDER BY COALESCE(p.updated_at, p.timestamp) DESC LIMIT 50
     ''', (row['id'],))
     posts = []
     for p in cursor.fetchall():
@@ -1317,6 +1332,7 @@ def get_user_profile(username):
             'images': json.loads(p['images']) if p['images'] else [],
             'videos': json.loads(p['videos']) if p['videos'] else [],
             'timestamp': p['timestamp'],
+            'updated_at': p['updated_at'],
             'price': p['price'],
             'location': p['location'],
             'comment_count': p['comment_count']
@@ -1552,13 +1568,16 @@ if __name__ == '__main__':
     # 配置 OSS CORS（允许网站直传文件）
     setup_oss_cors()
 
-    DEBUG_MODE = False  # 改成 False 即可切换为 waitress 生产模式运行
+    # DEBUG_MODE = True     # 改成 False 即可切换为 waitress 生产模式运行
 
+    DEBUG_MODE = False
+    
+         # 改成 False 即可切换为 waitress 生产模式运行
     if DEBUG_MODE:
         app.run(
             debug=True,
             host='0.0.0.0',
-            port=5002,
+            port=5002, 
             threaded=True
         )
     else:

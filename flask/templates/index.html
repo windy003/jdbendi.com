@@ -201,7 +201,7 @@
 </head>
 <body>
     <header>
-        <h1><span>📢 建德本地.com<br>建德本地供求信息发布平台</span></h1>
+        <h1><span>建德本地.com<br>建德本地供求信息发布平台</span></h1>
         <div id="authNav" style="text-align: center; margin-top: 10px; font-size: 14px;">
             <a href="/register" style="color: #667eea; text-decoration: none; margin: 0 10px; font-weight: 600;">注册</a> |
             <a href="/login" style="color: #667eea; text-decoration: none; margin: 0 10px; font-weight: 600;">登录</a>
@@ -482,6 +482,13 @@
             return date.toLocaleDateString('zh-CN');
         }
 
+        // 有修改时间则显示"修改时间"，否则显示"发布时间"
+        function postTimeLabel(post) {
+            return post.updated_at
+                ? '修改时间：' + formatTime(post.updated_at)
+                : '发布时间：' + formatTime(post.timestamp);
+        }
+
         function escapeHtml(text) {
             if (!text) return '';
             const d = document.createElement('div');
@@ -522,7 +529,7 @@
                     <div class="post-footer">
                         ${post.contact ? `<div class="post-contact">📞 ${escapeHtml(post.contact)}</div>` : ''}
                         <div class="post-meta-row">
-                            <div class="post-time">${formatTime(post.timestamp)}</div>
+                            <div class="post-time">${postTimeLabel(post)}</div>
                             <a href="/post/${post.id}" class="detail-link">查看详情 →</a>
                         </div>
                     </div>

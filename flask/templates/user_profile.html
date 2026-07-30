@@ -128,6 +128,12 @@
         function getMediaUrl(u) {
             return u || '';
         }
+        // 有修改时间则显示"修改时间"，否则显示"发布时间"
+        function postTimeLabel(post) {
+            return post.updated_at
+                ? '修改时间：' + formatTime(post.updated_at)
+                : '发布时间：' + formatTime(post.timestamp);
+        }
 
         async function init() {
             await checkLogin();
@@ -216,7 +222,7 @@
                         ${post.videos.map(v => `<video src="${getMediaUrl(v)}" controls preload="metadata" muted playsinline onloadedmetadata="this.currentTime=Math.min(1,(this.duration||1)/2)" style="width:100%;border-radius:8px;max-height:200px;margin-bottom:4px;"></video>`).join('')}
                     </div>` : ''}
                 <div class="post-meta">
-                    <span class="post-time">${formatTime(post.timestamp)}</span>
+                    <span class="post-time">${postTimeLabel(post)}</span>
                     <a href="/post/${post.id}" class="detail-link">查看详情 →</a>
                 </div>
             </div>`).join('');

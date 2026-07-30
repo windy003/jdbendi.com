@@ -826,6 +826,13 @@
             }
         }
 
+        // 有修改时间则显示"修改时间"，否则显示"发布时间"
+        function postTimeLabel(post) {
+            return post.updated_at
+                ? '修改时间：' + formatTime(post.updated_at)
+                : '发布时间：' + formatTime(post.timestamp);
+        }
+
         function renderPosts() {
             const postsSection = document.getElementById('postsSection');
 
@@ -835,7 +842,7 @@
             }
 
             postsSection.innerHTML = posts
-                .sort((a, b) => b.timestamp - a.timestamp)
+                .sort((a, b) => (b.updated_at || b.timestamp) - (a.updated_at || a.timestamp))
                 .map((post) => `
                     <div class="post-card">
                         <div class="post-header">
@@ -858,7 +865,7 @@
                         <div class="post-footer">
                             <div class="post-info">
                                 ${post.contact ? `<div class="post-contact">📞 ${escapeHtml(post.contact)}</div>` : ''}
-                                <div class="post-time">${formatTime(post.timestamp)}</div>
+                                <div class="post-time">${postTimeLabel(post)}</div>
                             </div>
                             <div class="post-actions">
                                 <button class="edit-btn" onclick="editPost(${post.id})">编辑</button>
