@@ -1568,9 +1568,9 @@ if __name__ == '__main__':
     # 配置 OSS CORS（允许网站直传文件）
     setup_oss_cors()
 
-    # DEBUG_MODE = True     # 改成 False 即可切换为 waitress 生产模式运行
+    DEBUG_MODE = True     # 改成 False 即可切换为 waitress 生产模式运行
 
-    DEBUG_MODE = False
+    # DEBUG_MODE = False
     
          # 改成 False 即可切换为 waitress 生产模式运行
     if DEBUG_MODE:

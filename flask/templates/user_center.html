@@ -541,6 +541,12 @@
                 // （SSE 占用一个 HTTP 连接槽，必须等数据请求先完成）
                 await Promise.all([loadMyPosts(), loadNotifications()]);
                 startSSE();
+
+                // 若 URL 带 ?edit=帖子ID，自动打开该帖子的编辑表单（来自首页/详情页的"编辑"按钮跳转）
+                const editId = parseInt(new URLSearchParams(window.location.search).get('edit'), 10);
+                if (editId && posts.some(p => p.id === editId)) {
+                    editPost(editId);
+                }
             } catch (error) {
                 window.location.href = '/login';
             }

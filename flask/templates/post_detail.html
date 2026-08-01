@@ -211,6 +211,16 @@
         function renderMentions(content) {
             return escapeHtml(content).replace(/@([a-zA-Z0-9_]+)/g, '<span class="at-mention">@$1</span>');
         }
+        function linkify(text) {
+            const escaped = escapeHtml(text);
+            return escaped.replace(/(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi, (match) => {
+                let url = match, trailing = '';
+                const m = url.match(/[),.!?;:'"]+$/);
+                if (m) { trailing = m[0]; url = url.slice(0, -trailing.length); }
+                const href = /^https?:\/\//i.test(url) ? url : 'http://' + url;
+                return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color:#667eea;word-break:break-all;">${url}</a>${trailing}`;
+            });
+        }
         function formatTime(ts) {
             const date = new Date(ts), now = new Date(), diff = now - date;
             if (diff < 60000) return '刚刚';
@@ -363,9 +373,10 @@
                 <div class="post-meta">
                     发布者：<a href="/user/${encodeURIComponent(p.author || '')}" style="color:#667eea;font-weight:600;text-decoration:none;">${escapeHtml(p.author || '匿名')}</a>
                     ${p.author && currentUser && p.author !== currentUser.username ? `<a href="/dm/${encodeURIComponent(p.author)}" style="margin-left:8px;font-size:12px;color:#764ba2;font-weight:600;text-decoration:none;">💬私信</a>` : ''}
+                    ${currentUser && p.user_id === currentUser.id ? `<a href="/user_center?edit=${p.id}" style="margin-left:8px;font-size:12px;color:#4CAF50;font-weight:600;text-decoration:none;">✏️编辑</a>` : ''}
                     &nbsp;·&nbsp; ${postTimeLabel(p)}
                 </div>
-                <div class="post-content">${escapeHtml(p.content)}</div>
+                <div class="post-content">${linkify(p.content)}</div>
                 ${p.price ? `<div class="post-price">¥ ${escapeHtml(p.price)}</div>` : ''}
                 ${p.location ? `<div class="post-location">${escapeHtml(p.location)}</div>` : ''}
                 ${lbImages.length ? `

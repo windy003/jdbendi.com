@@ -501,6 +501,18 @@
             return escapeHtml(content).replace(/@([a-zA-Z0-9_]+)/g, '<span class="at-mention">@$1</span>');
         }
 
+        // 将文本中的网址转成可点击的超链接
+        function linkify(text) {
+            const escaped = escapeHtml(text);
+            return escaped.replace(/(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi, (match) => {
+                let url = match, trailing = '';
+                const m = url.match(/[),.!?;:'"]+$/);
+                if (m) { trailing = m[0]; url = url.slice(0, -trailing.length); }
+                const href = /^https?:\/\//i.test(url) ? url : 'http://' + url;
+                return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color:#667eea;word-break:break-all;">${url}</a>${trailing}`;
+            });
+        }
+
         function renderPosts() {
             const section = document.getElementById('postsSection');
             if (!posts.length) { section.innerHTML = '<div class="empty-state">暂无信息</div>'; return; }
@@ -515,7 +527,7 @@
                     <div class="post-author">发布者：<a href="/user/${encodeURIComponent(post.author || '')}" style="color:#667eea;font-weight:600;text-decoration:none;">${escapeHtml(post.author || '匿名')}</a>
                         ${post.author && currentUser && post.author !== currentUser.username ? `<a href="/dm/${encodeURIComponent(post.author)}" style="margin-left:8px;font-size:11px;color:#764ba2;font-weight:600;text-decoration:none;">💬私信</a>` : ''}
                     </div>
-                    <div class="post-content">${escapeHtml(post.content)}</div>
+                    <div class="post-content">${linkify(post.content)}</div>
                     ${post.price ? `<div class="post-price">¥ ${escapeHtml(post.price)}</div>` : ''}
                     ${post.location ? `<div class="post-location">${escapeHtml(post.location)}</div>` : ''}
                     ${post.images && post.images.length ? `
@@ -530,7 +542,10 @@
                         ${post.contact ? `<div class="post-contact">📞 ${escapeHtml(post.contact)}</div>` : ''}
                         <div class="post-meta-row">
                             <div class="post-time">${postTimeLabel(post)}</div>
-                            <a href="/post/${post.id}" class="detail-link">查看详情 →</a>
+                            <div>
+                                ${currentUser && post.user_id === currentUser.id ? `<a href="/user_center?edit=${post.id}" class="detail-link" style="color:#4CAF50;margin-right:10px;">✏️ 编辑</a>` : ''}
+                                <a href="/post/${post.id}" class="detail-link">查看详情 →</a>
+                            </div>
                         </div>
                     </div>
                     <div class="comment-section">
