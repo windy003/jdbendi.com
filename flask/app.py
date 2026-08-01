@@ -121,7 +121,8 @@ def init_db():
             user_id INTEGER,
             location TEXT,
             videos TEXT,
-            updated_at INTEGER
+            updated_at INTEGER,
+            is_public INTEGER NOT NULL DEFAULT 1
         )
     ''')
 
@@ -154,6 +155,12 @@ def init_db():
         cursor.execute("SELECT updated_at FROM posts LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE posts ADD COLUMN updated_at INTEGER")
+
+    # 如果表已存在但没有is_public字段，则添加is_public字段（1=所有人可见，0=仅自己可见）
+    try:
+        cursor.execute("SELECT is_public FROM posts LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE posts ADD COLUMN is_public INTEGER NOT NULL DEFAULT 1")
 
     # 创建users表
     cursor.execute('''
@@ -427,7 +434,7 @@ def post_owner_or_admin(f):
 # 路由：前台页面
 @app.route('/')
 def index():
-    initial_posts = query_posts('全部')
+    initial_posts = query_posts('全部', session.get('user_id'))
     # 转成 JSON 字符串直接嵌入首屏 HTML，避免页面打开后再多一次 /api/posts 网络往返
     initial_posts_json = json.dumps(initial_posts, ensure_ascii=False).replace('</', '<\\/')
     return render_template('index.html', admin_contact=ADMIN_CONTACT, initial_posts_json=initial_posts_json)
@@ -463,7 +470,7 @@ def admin_users():
     return render_template('admin_users.html')
 
 # 查询帖子列表（首页服务端渲染和 /api/posts 共用）
-def query_posts(category='全部'):
+def query_posts(category='全部', viewer_id=None):
     conn = get_db()
     cursor = conn.cursor()
 
@@ -472,15 +479,17 @@ def query_posts(category='全部'):
             SELECT p.*, u.username as author,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
             FROM posts p LEFT JOIN users u ON p.user_id = u.id
-            WHERE p.category = ? ORDER BY COALESCE(p.updated_at, p.timestamp) DESC
-        ''', (category,))
+            WHERE p.category = ? AND (p.is_public = 1 OR p.user_id = ?)
+            ORDER BY COALESCE(p.updated_at, p.timestamp) DESC
+        ''', (category, viewer_id))
     else:
         cursor.execute('''
             SELECT p.*, u.username as author,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
             FROM posts p LEFT JOIN users u ON p.user_id = u.id
+            WHERE (p.is_public = 1 OR p.user_id = ?)
             ORDER BY COALESCE(p.updated_at, p.timestamp) DESC
-        ''')
+        ''', (viewer_id,))
 
     posts = []
     for row in cursor.fetchall():
@@ -498,7 +507,8 @@ def query_posts(category='全部'):
             'location': row['location'] if 'location' in row.keys() else None,
             'author': row['author'] if 'author' in row.keys() else None,
             'user_id': row['user_id'],
-            'comment_count': row['comment_count'] if 'comment_count' in row.keys() else 0
+            'comment_count': row['comment_count'] if 'comment_count' in row.keys() else 0,
+            'is_public': row['is_public'] if 'is_public' in row.keys() else 1
         }
         posts.append(post)
 
@@ -509,7 +519,7 @@ def query_posts(category='全部'):
 @app.route('/api/posts', methods=['GET'])
 def get_posts():
     category = request.args.get('category', '全部')
-    posts = query_posts(category)
+    posts = query_posts(category, session.get('user_id'))
     return jsonify({'success': True, 'data': posts})
 
 # API：获取单条信息详情
@@ -526,6 +536,13 @@ def get_post(post_id):
     conn.close()
     if not row:
         return jsonify({'success': False, 'message': '信息不存在'}), 404
+
+    is_public = row['is_public'] if 'is_public' in row.keys() else 1
+    is_owner = session.get('user_id') == row['user_id']
+    is_admin = session.get('role') == 'admin'
+    if not is_public and not (is_owner or is_admin):
+        return jsonify({'success': False, 'message': '信息不存在'}), 404
+
     post = {
         'id': row['id'],
         'category': row['category'],
@@ -539,7 +556,8 @@ def get_post(post_id):
         'price': row['price'] if 'price' in row.keys() else None,
         'location': row['location'] if 'location' in row.keys() else None,
         'author': row['author'] if 'author' in row.keys() else None,
-        'user_id': row['user_id']
+        'user_id': row['user_id'],
+        'is_public': is_public
     }
     return jsonify({'success': True, 'data': post})
 
@@ -748,6 +766,23 @@ def update_post(post_id):
 
     return jsonify({'success': True, 'message': '更新成功', 'data': updated_post})
 
+# API：设置信息可见性（需要登录且是所有者或管理员）
+@app.route('/api/posts/<int:post_id>/visibility', methods=['PUT'])
+@post_owner_or_admin
+def update_post_visibility(post_id):
+    data = request.get_json()
+    is_public = data.get('is_public')
+    if is_public not in (0, 1):
+        return jsonify({'success': False, 'message': '参数错误'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE posts SET is_public = ? WHERE id = ?', (is_public, post_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True, 'message': '设置成功', 'data': {'is_public': is_public}})
+
 # API：获取我的信息
 @app.route('/api/my_posts', methods=['GET'])
 @login_required
@@ -771,7 +806,8 @@ def get_my_posts():
             'updated_at': row['updated_at'] if 'updated_at' in row.keys() else None,
             'price': row['price'] if 'price' in row.keys() else None,
             'user_id': row['user_id'],
-            'location': row['location'] if 'location' in row.keys() else None
+            'location': row['location'] if 'location' in row.keys() else None,
+            'is_public': row['is_public'] if 'is_public' in row.keys() else 1
         }
         posts.append(post)
 
@@ -1297,8 +1333,7 @@ def get_user_profile(username):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, username, role, status, created_at,
-               (SELECT COUNT(*) FROM posts WHERE user_id = users.id) as posts_count
+        SELECT id, username, role, status, created_at
         FROM users WHERE username = ? AND status = 'active'
     ''', (username,))
     row = cursor.fetchone()
@@ -1306,22 +1341,39 @@ def get_user_profile(username):
         conn.close()
         return jsonify({'success': False, 'message': '用户不存在'}), 404
 
+    is_self = session.get('user_id') == row['id']
+
+    if is_self:
+        cursor.execute('SELECT COUNT(*) as c FROM posts WHERE user_id = ?', (row['id'],))
+    else:
+        cursor.execute('SELECT COUNT(*) as c FROM posts WHERE user_id = ? AND is_public = 1', (row['id'],))
+    posts_count = cursor.fetchone()['c']
+
     user_data = {
         'id': row['id'],
         'username': row['username'],
         'role': row['role'],
         'created_at': row['created_at'],
-        'posts_count': row['posts_count']
+        'posts_count': posts_count
     }
 
-    # 获取该用户的帖子
-    cursor.execute('''
-        SELECT p.id, p.category, p.title, p.content, p.images, p.videos,
-               p.timestamp, p.updated_at, p.price, p.location,
-               (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
-        FROM posts p WHERE p.user_id = ?
-        ORDER BY COALESCE(p.updated_at, p.timestamp) DESC LIMIT 50
-    ''', (row['id'],))
+    # 获取该用户的帖子（非本人只展示公开的帖子）
+    if is_self:
+        cursor.execute('''
+            SELECT p.id, p.category, p.title, p.content, p.images, p.videos,
+                   p.timestamp, p.updated_at, p.price, p.location, p.is_public,
+                   (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
+            FROM posts p WHERE p.user_id = ?
+            ORDER BY COALESCE(p.updated_at, p.timestamp) DESC LIMIT 50
+        ''', (row['id'],))
+    else:
+        cursor.execute('''
+            SELECT p.id, p.category, p.title, p.content, p.images, p.videos,
+                   p.timestamp, p.updated_at, p.price, p.location, p.is_public,
+                   (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
+            FROM posts p WHERE p.user_id = ? AND p.is_public = 1
+            ORDER BY COALESCE(p.updated_at, p.timestamp) DESC LIMIT 50
+        ''', (row['id'],))
     posts = []
     for p in cursor.fetchall():
         posts.append({
@@ -1335,7 +1387,8 @@ def get_user_profile(username):
             'updated_at': p['updated_at'],
             'price': p['price'],
             'location': p['location'],
-            'comment_count': p['comment_count']
+            'comment_count': p['comment_count'],
+            'is_public': p['is_public']
         })
 
     conn.close()
@@ -1568,9 +1621,9 @@ if __name__ == '__main__':
     # 配置 OSS CORS（允许网站直传文件）
     setup_oss_cors()
 
-    DEBUG_MODE = True     # 改成 False 即可切换为 waitress 生产模式运行
+    # DEBUG_MODE = True     # 改成 False 即可切换为 waitress 生产模式运行
 
-    # DEBUG_MODE = False
+    DEBUG_MODE = False
     
          # 改成 False 即可切换为 waitress 生产模式运行
     if DEBUG_MODE:

@@ -874,6 +874,10 @@
                                 <div class="post-time">${postTimeLabel(post)}</div>
                             </div>
                             <div class="post-actions">
+                                <select onchange="toggleVisibility(${post.id}, this.value)" style="font-size:12px;color:#e67e22;font-weight:600;border:1px solid #e67e22;border-radius:6px;background:#fff;padding:5px 6px;cursor:pointer;">
+                                    <option value="1" ${post.is_public ? 'selected' : ''}>🌐所有人可见</option>
+                                    <option value="0" ${!post.is_public ? 'selected' : ''}>🔒仅自己可见</option>
+                                </select>
                                 <button class="edit-btn" onclick="editPost(${post.id})">编辑</button>
                                 <button class="delete-btn" onclick="deletePost(${post.id})">删除</button>
                             </div>
@@ -930,6 +934,29 @@
         }
 
         // 删除信息
+        async function toggleVisibility(postId, value) {
+            const isPublic = parseInt(value, 10);
+            const label = isPublic ? '所有人可见' : '仅自己可见';
+            if (!confirm(`确定要设为"${label}"吗？`)) { renderPosts(); return; }
+            try {
+                const response = await fetch(`/api/posts/${postId}/visibility`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_public: isPublic })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    loadMyPosts();
+                } else {
+                    alert('设置失败：' + result.message);
+                    renderPosts();
+                }
+            } catch (error) {
+                alert('设置失败，请检查网络连接');
+                renderPosts();
+            }
+        }
+
         async function deletePost(postId) {
             if (confirm('确定要删除这条信息吗？')) {
                 try {
