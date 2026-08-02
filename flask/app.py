@@ -1299,7 +1299,6 @@ def notification_stream():
     resp = Response(generate(), mimetype='text/event-stream')
     resp.headers['Cache-Control'] = 'no-cache'
     resp.headers['X-Accel-Buffering'] = 'no'   # 关闭 Nginx 缓冲
-    resp.headers['Connection'] = 'keep-alive'
     return resp
 
 # API：搜索用户名（用于 @ 提示）
