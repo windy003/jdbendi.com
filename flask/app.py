@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, send_from_directory, Response, stream_with_context
+from flask import Flask, render_template, request, jsonify, session, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -11,7 +11,6 @@ import uuid
 import time
 import re
 import threading
-import queue
 import oss2
 import mimetypes
 import subprocess
@@ -37,36 +36,6 @@ CORS(app, resources={
         "allow_headers": ["Content-Type"]
     }
 })
-
-# ========== SSE 实时推送注册表 ==========
-# user_id -> list of Queue，每个 SSE 连接一个队列
-_sse_clients: dict[int, list[queue.Queue]] = {}
-_sse_lock = threading.Lock()
-
-def _sse_subscribe(user_id: int) -> queue.Queue:
-    q: queue.Queue = queue.Queue(maxsize=20)
-    with _sse_lock:
-        _sse_clients.setdefault(user_id, []).append(q)
-    return q
-
-def _sse_unsubscribe(user_id: int, q: queue.Queue):
-    with _sse_lock:
-        clients = _sse_clients.get(user_id, [])
-        try:
-            clients.remove(q)
-        except ValueError:
-            pass
-
-def sse_push(user_id: int, data: dict):
-    """向指定用户的所有 SSE 连接推送消息"""
-    with _sse_lock:
-        clients = list(_sse_clients.get(user_id, []))
-    for q in clients:
-        try:
-            q.put_nowait(data)
-        except queue.Full:
-            pass  # 队列满则丢弃，不阻塞主线程
-# ================================================
 
 # ========== 配置区域（从环境变量读取，保护敏感信息） ==========
 # 账号密码（使用哈希加密存储）
@@ -1074,7 +1043,7 @@ def cleanup_notifications(cursor, user_id):
     ''', (user_id, user_id, NOTIF_MAX_PER_USER))
 
 def send_notification(cursor, user_id, ntype, post_id, comment_id, from_user_id, content):
-    """发送通知（不重复通知自己），并记录待推送目标"""
+    """发送通知（不重复通知自己）"""
     if user_id == from_user_id:
         return
     cursor.execute('''
@@ -1082,13 +1051,6 @@ def send_notification(cursor, user_id, ntype, post_id, comment_id, from_user_id,
         VALUES (?, ?, ?, ?, ?, ?, 0, ?)
     ''', (user_id, ntype, post_id, comment_id, from_user_id, content, int(time.time() * 1000)))
     cleanup_notifications(cursor, user_id)
-    # 记录到线程本地，等 commit 后再推送（避免推送时数据还未落库）
-    if not hasattr(_pending_sse, 'targets'):
-        _pending_sse.targets = []
-    _pending_sse.targets.append(user_id)
-
-# 线程本地存储，用于收集本次请求需要推送的用户
-_pending_sse = threading.local()
 
 # API：获取某帖子的评论
 @app.route('/api/posts/<int:post_id>/comments', methods=['GET'])
@@ -1178,12 +1140,6 @@ def create_comment(post_id):
 
     conn.commit()
 
-    # commit 后推送 SSE（数据已落库，前端此时拉取通知一定能拿到）
-    targets = getattr(_pending_sse, 'targets', [])
-    for uid in targets:
-        sse_push(uid, {'type': 'new_notification'})
-    _pending_sse.targets = []
-
     # 返回完整评论对象
     cursor.execute('''
         SELECT c.id, c.post_id, c.user_id, c.parent_id, c.content, c.timestamp, u.username
@@ -1269,37 +1225,6 @@ def read_all_notifications():
     conn.commit()
     conn.close()
     return jsonify({'success': True})
-
-# API：SSE 实时通知流（需要登录）
-@app.route('/api/notifications/stream')
-def notification_stream():
-    if 'user_id' not in session:
-        return jsonify({'success': False, 'message': '未登录'}), 401
-
-    user_id = session.get('user_id')
-    q = _sse_subscribe(user_id)
-
-    @stream_with_context
-    def generate():
-        # 首次连接立即发一次心跳，让浏览器确认连接成功
-        yield 'data: {"type":"connected"}\n\n'
-        try:
-            while True:
-                try:
-                    data = q.get(timeout=25)
-                    yield f'data: {json.dumps(data, ensure_ascii=False)}\n\n'
-                except queue.Empty:
-                    # 25 秒无消息发心跳，防止代理/浏览器断开连接
-                    yield 'data: {"type":"heartbeat"}\n\n'
-        except GeneratorExit:
-            pass
-        finally:
-            _sse_unsubscribe(user_id, q)
-
-    resp = Response(generate(), mimetype='text/event-stream')
-    resp.headers['Cache-Control'] = 'no-cache'
-    resp.headers['X-Accel-Buffering'] = 'no'   # 关闭 Nginx 缓冲
-    return resp
 
 # API：搜索用户名（用于 @ 提示）
 @app.route('/api/users/search', methods=['GET'])
@@ -1550,15 +1475,6 @@ def send_message(other_user_id):
     msg_id = cursor.lastrowid
     conn.commit()
     conn.close()
-
-    # SSE 推送给接收方
-    sse_push(other_user_id, {
-        'type': 'new_dm',
-        'from_user_id': me,
-        'from_username': session.get('username'),
-        'content_type': content_type,
-        'preview': content[:50] if content_type == 'text' else f'[{content_type}]'
-    })
 
     return jsonify({'success': True, 'data': {
         'id': msg_id,

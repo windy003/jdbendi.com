@@ -207,7 +207,6 @@
         let currentChatUserId = null;
         let currentChatUsername = null;
         let pollTimer = null;
-        let sseSource = null;
 
         function escapeHtml(t) {
             if (!t) return '';
@@ -270,35 +269,12 @@
             document.getElementById('topUserInfo').innerHTML =
                 `<a href="/user_center" class="top-user-link">${escapeHtml(currentUser.username)}</a>`;
 
-            setupSSE();
-
             if (TARGET_USERNAME) {
                 // 直接打开与目标用户的对话
                 await openChatByUsername(TARGET_USERNAME);
             } else {
                 await loadConversations();
             }
-        }
-
-        function setupSSE() {
-            if (sseSource) { sseSource.close(); sseSource = null; }
-            sseSource = new EventSource('/api/notifications/stream');
-            sseSource.onmessage = e => {
-                try {
-                    const data = JSON.parse(e.data);
-                    if (data.type === 'new_dm' && currentChatUserId == data.from_user_id) {
-                        loadMessages(false);
-                    } else if (data.type === 'new_dm') {
-                        loadConversationsSilent();
-                    }
-                } catch(_) {}
-            };
-            sseSource.onerror = () => {
-                sseSource.close();
-                sseSource = null;
-                // 5秒后重新连接
-                setTimeout(() => { if (currentUser) setupSSE(); }, 5000);
-            };
         }
 
         async function loadConversations() {
@@ -317,13 +293,6 @@
             } catch(e) {
                 document.getElementById('emptyConv').style.display = 'flex';
             }
-        }
-
-        async function loadConversationsSilent() {
-            const res = await fetch('/api/conversations');
-            const r = await res.json();
-            if (!r.success) return;
-            renderConversations(r.data);
         }
 
         function renderConversations(convs) {
@@ -376,7 +345,7 @@
 
             await loadMessages(true);
 
-            // 每3秒轮询补充（SSE 兜底）
+            // 每3秒轮询新消息
             clearInterval(pollTimer);
             pollTimer = setInterval(() => loadMessages(false), 3000);
         }

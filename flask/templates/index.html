@@ -358,7 +358,6 @@
 
         let unreadCount = 0;
         let dmUnreadCount = 0;
-        let sseSource = null;
 
         async function checkLoginStatus() {
             try {
@@ -367,15 +366,19 @@
                 if (r.logged_in) {
                     currentUser = r.user;
                     updateNavBar(true, r.user);
-                    // 先拿未读数（普通请求），完成后再建 SSE 长连接
                     await fetchUnreadCount();
                     await fetchDmUnreadCount();
-                    startSSE();
                 } else {
                     currentUser = null;
                     updateNavBar(false, null);
                 }
             } catch(e) { updateNavBar(false, null); }
+        }
+
+        async function checkMessageStatus() {
+            await fetchUnreadCount();
+            await fetchDmUnreadCount();
+            alert(`未读消息 ${unreadCount + dmUnreadCount} 条`);
         }
 
         async function fetchUnreadCount() {
@@ -416,28 +419,6 @@
             }
         }
 
-        function startSSE() {
-            if (sseSource) sseSource.close();
-            sseSource = new EventSource('/api/notifications/stream');
-            sseSource.onmessage = (e) => {
-                try {
-                    const data = JSON.parse(e.data);
-                    if (data.type === 'new_notification') {
-                        unreadCount++;
-                        updateBadge();
-                    } else if (data.type === 'new_dm') {
-                        dmUnreadCount++;
-                        updateDmBadge();
-                    }
-                } catch(_) {}
-            };
-            sseSource.onerror = () => {
-                // 断线后 30 秒重连
-                sseSource.close();
-                setTimeout(() => { if (currentUser) startSSE(); }, 30000);
-            };
-        }
-
         function updateNavBar(isLoggedIn, user) {
             const nav = document.getElementById('authNav');
             if (isLoggedIn && user) {
@@ -448,6 +429,7 @@
                     <span style="color:#667eea;font-weight:600;">欢迎, ${escapeHtml(user.username)}</span> |
                     ${centerLink} |
                     <a href="/dm" style="color:#764ba2;text-decoration:none;margin:0 10px;font-weight:600;position:relative;" id="dmNavLink">💬私信<span id="dmBadge" style="position:absolute;top:-8px;right:-12px;background:#f44336;color:white;border-radius:10px;min-width:16px;height:16px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px;"></span></a> |
+                    <a href="#" onclick="checkMessageStatus();return false;" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">获取消息状态</a> |
                     <a href="#" onclick="logout();return false;" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">退出登录</a>
                 `;
             } else {
@@ -459,7 +441,6 @@
         }
 
         async function logout() {
-            if (sseSource) { sseSource.close(); sseSource = null; }
             await fetch('/api/logout', { method: 'POST' });
             currentUser = null;
             updateNavBar(false, null);
