@@ -423,6 +423,39 @@
             font-size: 14px;
         }
 
+        /* 头像设置 */
+        .avatar-section {
+            background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px;
+            display: flex; align-items: center; gap: 18px;
+        }
+        .avatar-preview {
+            width: 76px; height: 76px; border-radius: 50%; object-fit: cover;
+            flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.15); cursor: pointer;
+        }
+        .avatar-actions { display: flex; flex-direction: column; gap: 8px; }
+        .avatar-btn {
+            padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+            cursor: pointer; border: none;
+        }
+        .avatar-btn-change { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .avatar-btn-reset { background: #f0f0f0; color: #666; }
+        .avatar-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* 头像放大灯箱 */
+        #avatarLightbox {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 9999;
+            align-items: center; justify-content: center;
+        }
+        #avatarLightbox.active { display: flex; }
+        #avatarLightbox img { max-width: 85%; max-height: 80vh; object-fit: contain; border-radius: 8px; }
+        #avatarLightboxClose {
+            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.2);
+            border: none; color: white; font-size: 22px; width: 42px; height: 42px;
+            border-radius: 50%; cursor: pointer;
+        }
+
         .contact-config {
             background: #fff3cd;
             padding: 15px;
@@ -574,6 +607,16 @@
                 </div>
             </header>
 
+            <!-- 头像设置 -->
+            <div class="avatar-section">
+                <img class="avatar-preview" id="avatarPreview" src="https://jdbendi.oss-cn-hangzhou.aliyuncs.com/Avatar/default_avatar.svg" alt="头像" onclick="openAvatarLightbox(this.src)">
+                <div class="avatar-actions">
+                    <input type="file" id="avatarInput" accept="image/*" style="display:none;">
+                    <button type="button" class="avatar-btn avatar-btn-change" id="avatarChangeBtn" onclick="document.getElementById('avatarInput').click()">更换头像</button>
+                    <button type="button" class="avatar-btn avatar-btn-reset" id="avatarResetBtn" onclick="resetAvatar()">恢复默认头像</button>
+                </div>
+            </div>
+
             <div class="contact-config">
                 <p><strong>修改站长联系方式：</strong>在 <code>app.py</code> 第 17 行修改 <code>ADMIN_CONTACT</code> 变量</p>
             </div>
@@ -638,14 +681,51 @@
         </div>
     </div>
 
+    <!-- 头像放大灯箱 -->
+    <div id="avatarLightbox">
+        <button id="avatarLightboxClose" onclick="closeAvatarLightbox()">✕</button>
+        <img id="avatarLightboxImg" alt="头像">
+    </div>
+
     <script>
         let posts = [];
         let uploadedImages = [];
         let uploadedVideos = [];
+        let currentUser = null;
 
         function getMediaUrl(u) {
             return u || '';
         }
+
+        // 头像放大灯箱
+        let avatarLbHistoryPushed = false;
+        function openAvatarLightbox(src) {
+            if (!src) return;
+            document.getElementById('avatarLightboxImg').src = src;
+            document.getElementById('avatarLightbox').classList.add('active');
+            avatarLbHistoryPushed = true;
+            history.pushState({ avatarLightbox: true }, '');
+        }
+        function closeAvatarLightbox() {
+            if (avatarLbHistoryPushed) {
+                avatarLbHistoryPushed = false;
+                history.back();
+            } else {
+                hideAvatarLightbox();
+            }
+        }
+        function hideAvatarLightbox() {
+            document.getElementById('avatarLightbox').classList.remove('active');
+        }
+        window.addEventListener('popstate', () => {
+            if (document.getElementById('avatarLightbox').classList.contains('active')) {
+                avatarLbHistoryPushed = false;
+                hideAvatarLightbox();
+            }
+        });
+        document.getElementById('avatarLightbox').addEventListener('click', e => {
+            if (e.target.id === 'avatarLightbox') closeAvatarLightbox();
+        });
 
         // 页面加载时检查登录状态
         checkLoginStatus();
@@ -717,8 +797,8 @@
             });
         }
 
-        // 通用直传 R2 函数（浏览器直接上传，绕过服务器）
-        async function uploadToR2(file) {
+        // 通用直传 OSS 函数（浏览器直接上传，绕过服务器；type='avatar' 时上传到 OSS 的 Avatar/ 目录）
+        async function uploadToOSS(file, type) {
             // 先读文件内容，避免 Android 异步等待后 content URI 权限过期
             const buffer = await file.arrayBuffer();
             // 1. 向服务器申请预签名 URL
@@ -726,17 +806,17 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ filename: file.name, content_type: file.type })
+                body: JSON.stringify({ filename: file.name, content_type: file.type, type: type || '' })
             });
             const presign = await presignRes.json();
             if (!presign.success) throw new Error(presign.message);
 
-            // 2. 浏览器直接 PUT 到 R2，用 XHR 兼容 Opera 等浏览器
+            // 2. 浏览器直接 PUT 到 OSS，用 XHR 兼容 Opera 等浏览器
             await new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open('PUT', presign.upload_url);
-                xhr.onload = () => xhr.status < 400 ? resolve() : reject(new Error(`R2上传失败: ${xhr.status}`));
-                xhr.onerror = () => reject(new Error('R2上传失败: 网络错误'));
+                xhr.onload = () => xhr.status < 400 ? resolve() : reject(new Error(`OSS上传失败: ${xhr.status}`));
+                xhr.onerror = () => reject(new Error('OSS上传失败: 网络错误'));
                 xhr.send(buffer);
             });
 
@@ -754,6 +834,73 @@
             }
 
             return presign.public_url;
+        }
+
+        // 头像选择处理
+        document.getElementById('avatarInput').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            e.target.value = '';
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                alert('请选择图片文件'); return;
+            }
+
+            const changeBtn = document.getElementById('avatarChangeBtn');
+            const resetBtn = document.getElementById('avatarResetBtn');
+            const preview = document.getElementById('avatarPreview');
+            const origText = changeBtn.textContent;
+            changeBtn.disabled = true;
+            resetBtn.disabled = true;
+
+            try {
+                let fileToUpload = file;
+                if (file.size > 2 * 1024 * 1024) {
+                    changeBtn.textContent = '压缩中...';
+                    try { fileToUpload = await compressImage(file); } catch(_) {}
+                }
+                changeBtn.textContent = '上传中...';
+                const url = await uploadToOSS(fileToUpload, 'avatar');
+
+                const res = await fetch('/api/user/avatar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ avatar_url: url })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    preview.src = getMediaUrl(result.avatar_url);
+                    currentUser.avatar_url = result.avatar_url;
+                } else {
+                    alert('设置头像失败：' + result.message);
+                }
+            } catch (err) {
+                alert('上传失败：' + err.message);
+            } finally {
+                changeBtn.textContent = origText;
+                changeBtn.disabled = false;
+                resetBtn.disabled = false;
+            }
+        });
+
+        // 恢复默认头像
+        async function resetAvatar() {
+            if (!confirm('确定要恢复默认头像吗？')) return;
+            const resetBtn = document.getElementById('avatarResetBtn');
+            resetBtn.disabled = true;
+            try {
+                const res = await fetch('/api/user/avatar', { method: 'DELETE' });
+                const result = await res.json();
+                if (result.success) {
+                    document.getElementById('avatarPreview').src = getMediaUrl(result.avatar_url);
+                    currentUser.avatar_url = result.avatar_url;
+                } else {
+                    alert('操作失败：' + result.message);
+                }
+            } catch (err) {
+                alert('操作失败，请检查网络连接');
+            } finally {
+                resetBtn.disabled = false;
+            }
         }
 
         // 图片选择处理
@@ -777,7 +924,7 @@
                 }
                 btn.textContent = `上传中 ${i+1}/${files.length}...`;
                 try {
-                    const url = await uploadToR2(fileToUpload);
+                    const url = await uploadToOSS(fileToUpload);
                     uploadedImages.push(url);
                     renderImagePreview();
                 } catch(err) {
@@ -820,7 +967,7 @@
                 }
                 btn.textContent = `上传视频 ${i+1}/${files.length}...`;
                 try {
-                    const url = await uploadToR2(file);
+                    const url = await uploadToOSS(file);
                     uploadedVideos.push(url);
                     renderVideoPreview();
                 } catch(err) {
@@ -895,6 +1042,7 @@
                 const result = await response.json();
 
                 if (result.logged_in) {
+                    currentUser = result.user;
                     showAdminPage();
                 } else {
                     showLoginPage();
@@ -927,6 +1075,7 @@
                 const result = await response.json();
 
                 if (result.success) {
+                    currentUser = result.user;
                     showAdminPage();
                 } else {
                     document.getElementById('errorMessage').classList.add('show');
@@ -984,6 +1133,7 @@
             document.getElementById('loginPage').style.display = 'none';
             document.getElementById('adminPage').classList.add('show');
             document.body.style.display = 'block';
+            if (currentUser) document.getElementById('avatarPreview').src = getMediaUrl(currentUser.avatar_url);
             loadPosts();
         }
 

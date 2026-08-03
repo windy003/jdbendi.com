@@ -61,8 +61,10 @@
         .category-其他 { background: #607D8B; }
         .category-找对象 { background: #E91E63; }
         .category-维权\/曝光 { background: #F44336; }
-        .post-author { font-size: 12px; color: #888; margin-bottom: 6px; }
+        .post-author { font-size: 12px; color: #888; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
         .post-author span { color: #667eea; font-weight: 600; }
+        .post-author-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0; cursor: pointer; }
+        .nav-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; cursor: pointer; vertical-align: middle; margin: 0 4px; }
         .post-content { color: #333; line-height: 1.6; margin: 10px 0; font-size: 14px; white-space: pre-wrap; }
         .post-price { font-size: 20px; font-weight: 700; color: #E91E63; margin: 10px 0; }
         .post-location {
@@ -269,6 +271,17 @@
             lbHistoryPushed = true;
             history.pushState({ lightbox: true }, '');
         }
+        // 点击发布者头像放大查看
+        function openAvatarLightbox(url) {
+            if (!url) return;
+            lbImages = [url];
+            lbIndex = 0;
+            document.getElementById('lightbox').classList.add('active');
+            document.body.style.overflow = 'hidden';
+            updateLightbox();
+            lbHistoryPushed = true;
+            history.pushState({ lightbox: true }, '');
+        }
         function closeLightbox() {
             if (lbHistoryPushed) {
                 lbHistoryPushed = false;
@@ -426,7 +439,7 @@
                     ? '<a href="/admin" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">管理后台</a>'
                     : `<a href="/user_center" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;position:relative;">个人中心<span id="notifBadge" style="position:absolute;top:-8px;right:-10px;background:#f44336;color:white;border-radius:50%;min-width:16px;height:16px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px;"></span></a>`;
                 nav.innerHTML = `
-                    <span style="color:#667eea;font-weight:600;">欢迎, ${escapeHtml(user.username)}</span> |
+                    <span style="color:#667eea;font-weight:600;">欢迎, <img class="nav-avatar" src="${getMediaUrl(user.avatar_url)}" alt="头像" onclick="openAvatarLightbox('${getMediaUrl(user.avatar_url)}')">${escapeHtml(user.username)}</span> |
                     ${centerLink} |
                     <a href="/dm" style="color:#764ba2;text-decoration:none;margin:0 10px;font-weight:600;position:relative;" id="dmNavLink">💬私信<span id="dmBadge" style="position:absolute;top:-8px;right:-12px;background:#f44336;color:white;border-radius:10px;min-width:16px;height:16px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px;"></span></a> |
                     <a href="#" onclick="checkMessageStatus();return false;" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">获取消息状态</a> |
@@ -505,7 +518,8 @@
                         <h3 class="post-title"><a href="/post/${post.id}">${escapeHtml(post.title)}</a></h3>
                         <span class="post-category category-${post.category}">${post.category}</span>
                     </div>
-                    <div class="post-author">发布者：<a href="/user/${encodeURIComponent(post.author || '')}" style="color:#667eea;font-weight:600;text-decoration:none;">${escapeHtml(post.author || '匿名')}</a>
+                    <div class="post-author">
+                        发布者：<img class="post-author-avatar" src="${getMediaUrl(post.author_avatar_url)}" alt="头像" onclick="openAvatarLightbox('${getMediaUrl(post.author_avatar_url)}')"><a href="/user/${encodeURIComponent(post.author || '')}" style="color:#667eea;font-weight:600;text-decoration:none;">${escapeHtml(post.author || '匿名')}</a>
                         ${post.author && currentUser && post.author !== currentUser.username ? `<a href="/dm/${encodeURIComponent(post.author)}" style="margin-left:8px;font-size:11px;color:#764ba2;font-weight:600;text-decoration:none;">💬私信</a>` : ''}
                     </div>
                     <div class="post-content">${linkify(post.content)}</div>

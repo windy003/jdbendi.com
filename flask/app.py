@@ -19,6 +19,9 @@ import shutil
 
 # 注册 .apk 的 MIME 类型，避免静态文件被当成 application/octet-stream 下载成 .bin
 mimetypes.add_type('application/vnd.android.package-archive', '.apk')
+# 注册 .svg 的 MIME 类型：Windows 注册表里该项常缺失或错误（如 image/svg），
+# 导致浏览器 <img> 标签拒绝渲染 SVG（显示加载失败占位图），这里强制指定为正确的 image/svg+xml
+mimetypes.add_type('image/svg+xml', '.svg')
 
 # 加载环境变量
 load_dotenv()
@@ -52,6 +55,10 @@ ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'mov', 'avi', 'webm', 'mkv'}
 ALLOWED_ALL_MEDIA = ALLOWED_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS
 MAX_IMAGES = 9  # 每条信息最多上传9张图片
 MAX_VIDEOS = 3  # 每条信息最多上传3个视频
+
+# 头像配置：用户自定义头像统一存放在 OSS 的 Avatar/ 目录下；未自定义时使用默认头像
+AVATAR_OSS_FOLDER = 'Avatar'
+DEFAULT_AVATAR_URL = 'https://jdbendi.oss-cn-hangzhou.aliyuncs.com/Avatar/default_avatar.svg'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 限制500MB（支持视频）
 
 # 阿里云 OSS 配置
@@ -143,6 +150,12 @@ def init_db():
             last_login INTEGER
         )
     ''')
+
+    # 如果表已存在但没有avatar_url字段，则添加avatar_url字段（用户自定义头像，NULL表示使用默认头像）
+    try:
+        cursor.execute("SELECT avatar_url FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE users ADD COLUMN avatar_url TEXT")
 
     # 创建评论表
     cursor.execute('''
@@ -258,7 +271,7 @@ def authenticate_user(username, password):
     """验证用户身份"""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, password_hash, role, status FROM users WHERE username = ?', (username,))
+    cursor.execute('SELECT id, password_hash, role, status, avatar_url FROM users WHERE username = ?', (username,))
     user = cursor.fetchone()
 
     if not user:
@@ -282,12 +295,17 @@ def authenticate_user(username, password):
     return {
         'id': user['id'],
         'username': username,
-        'role': user['role']
+        'role': user['role'],
+        'avatar_url': user['avatar_url']
     }, None
 
 def allowed_file(filename):
     """检查图片文件扩展名是否允许"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def get_avatar_url(avatar_url):
+    """返回用户头像URL，未自定义时返回默认头像"""
+    return avatar_url if avatar_url else DEFAULT_AVATAR_URL
 
 def allowed_media(filename):
     """检查图片或视频扩展名是否允许"""
@@ -324,10 +342,13 @@ def delete_from_oss(key):
         print(f"OSS 删除失败: {e}")
 
 def delete_media(url):
-    """从 OSS 删除媒体文件（通过 URL 提取 key）"""
+    """从 OSS 删除媒体文件（通过 URL 提取 key，保留目录前缀如 Avatar/xxx.png）"""
     if not url or not url.startswith('http'):
         return
-    key = url.split('/')[-1].split('?')[0]
+    if OSS_PUBLIC_URL and url.startswith(OSS_PUBLIC_URL + '/'):
+        key = url[len(OSS_PUBLIC_URL) + 1:].split('?')[0]
+    else:
+        key = url.split('/')[-1].split('?')[0]
     delete_from_oss(key)
 
 def setup_oss_cors():
@@ -445,7 +466,7 @@ def query_posts(category='全部', viewer_id=None):
 
     if category != '全部':
         cursor.execute('''
-            SELECT p.*, u.username as author,
+            SELECT p.*, u.username as author, u.avatar_url as author_avatar_url,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
             FROM posts p LEFT JOIN users u ON p.user_id = u.id
             WHERE p.category = ? AND (p.is_public = 1 OR p.user_id = ?)
@@ -453,7 +474,7 @@ def query_posts(category='全部', viewer_id=None):
         ''', (category, viewer_id))
     else:
         cursor.execute('''
-            SELECT p.*, u.username as author,
+            SELECT p.*, u.username as author, u.avatar_url as author_avatar_url,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
             FROM posts p LEFT JOIN users u ON p.user_id = u.id
             WHERE (p.is_public = 1 OR p.user_id = ?)
@@ -475,6 +496,7 @@ def query_posts(category='全部', viewer_id=None):
             'price': row['price'] if 'price' in row.keys() else None,
             'location': row['location'] if 'location' in row.keys() else None,
             'author': row['author'] if 'author' in row.keys() else None,
+            'author_avatar_url': get_avatar_url(row['author_avatar_url']) if 'author_avatar_url' in row.keys() else DEFAULT_AVATAR_URL,
             'user_id': row['user_id'],
             'comment_count': row['comment_count'] if 'comment_count' in row.keys() else 0,
             'is_public': row['is_public'] if 'is_public' in row.keys() else 1
@@ -497,7 +519,7 @@ def get_post(post_id):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT p.*, u.username as author
+        SELECT p.*, u.username as author, u.avatar_url as author_avatar_url
         FROM posts p LEFT JOIN users u ON p.user_id = u.id
         WHERE p.id = ?
     ''', (post_id,))
@@ -525,6 +547,7 @@ def get_post(post_id):
         'price': row['price'] if 'price' in row.keys() else None,
         'location': row['location'] if 'location' in row.keys() else None,
         'author': row['author'] if 'author' in row.keys() else None,
+        'author_avatar_url': get_avatar_url(row['author_avatar_url']) if 'author_avatar_url' in row.keys() else DEFAULT_AVATAR_URL,
         'user_id': row['user_id'],
         'is_public': is_public
     }
@@ -580,6 +603,7 @@ def login():
         session['user_id'] = user['id']
         session['username'] = user['username']
         session['role'] = user['role']
+        session['avatar_url'] = user['avatar_url']
         session.permanent = True
         return jsonify({
             'success': True,
@@ -587,7 +611,8 @@ def login():
             'user': {
                 'id': user['id'],
                 'username': user['username'],
-                'role': user['role']
+                'role': user['role'],
+                'avatar_url': get_avatar_url(user['avatar_url'])
             }
         })
 
@@ -603,7 +628,8 @@ def check_login():
             'user': {
                 'id': session.get('user_id'),
                 'username': session.get('username'),
-                'role': session.get('role')
+                'role': session.get('role'),
+                'avatar_url': get_avatar_url(session.get('avatar_url'))
             }
         })
     return jsonify({'success': True, 'logged_in': False})
@@ -613,6 +639,51 @@ def check_login():
 def logout():
     session.clear()
     return jsonify({'success': True, 'message': '已退出登录'})
+
+# API：设置/更新头像（前端先通过 /api/presign type=avatar 直传OSS的Avatar/目录，再调用此接口保存URL）
+@app.route('/api/user/avatar', methods=['POST'])
+@login_required
+def set_avatar():
+    data = request.get_json()
+    avatar_url = (data.get('avatar_url') or '').strip()
+
+    if not avatar_url or not avatar_url.startswith(f"{OSS_PUBLIC_URL}/{AVATAR_OSS_FOLDER}/"):
+        return jsonify({'success': False, 'message': '无效的头像地址'}), 400
+
+    user_id = session['user_id']
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT avatar_url FROM users WHERE id = ?', (user_id,))
+    old = cursor.fetchone()
+    cursor.execute('UPDATE users SET avatar_url = ? WHERE id = ?', (avatar_url, user_id))
+    conn.commit()
+    conn.close()
+
+    # 删除旧的自定义头像文件
+    if old and old['avatar_url'] and old['avatar_url'] != avatar_url:
+        delete_media(old['avatar_url'])
+
+    session['avatar_url'] = avatar_url
+    return jsonify({'success': True, 'avatar_url': avatar_url})
+
+# API：恢复默认头像
+@app.route('/api/user/avatar', methods=['DELETE'])
+@login_required
+def reset_avatar():
+    user_id = session['user_id']
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT avatar_url FROM users WHERE id = ?', (user_id,))
+    old = cursor.fetchone()
+    cursor.execute('UPDATE users SET avatar_url = NULL WHERE id = ?', (user_id,))
+    conn.commit()
+    conn.close()
+
+    if old and old['avatar_url']:
+        delete_media(old['avatar_url'])
+
+    session['avatar_url'] = None
+    return jsonify({'success': True, 'avatar_url': DEFAULT_AVATAR_URL})
 
 # API：发布信息（需要登录）
 @app.route('/api/posts', methods=['POST'])
@@ -816,18 +887,21 @@ def presign_upload():
     data = request.get_json()
     original_filename = data.get('filename', '')
     client_content_type = data.get('content_type', '')
+    upload_type = data.get('type', '')  # 'avatar' 时上传到 Avatar/ 目录，且仅允许图片
 
     if '.' not in original_filename:
         return jsonify({'success': False, 'message': '文件必须有扩展名'}), 400
 
     ext = original_filename.rsplit('.', 1)[1].lower()
-    if ext not in ALLOWED_ALL_MEDIA:
-        allowed = ', '.join(sorted(ALLOWED_ALL_MEDIA))
+    is_avatar = upload_type == 'avatar'
+    allowed_set = ALLOWED_EXTENSIONS if is_avatar else ALLOWED_ALL_MEDIA
+    if ext not in allowed_set:
+        allowed = ', '.join(sorted(allowed_set))
         return jsonify({'success': False, 'message': f'不支持的文件格式，仅支持: {allowed}'}), 400
 
     is_video = ext in ALLOWED_VIDEO_EXTENSIONS
     content_type = client_content_type if client_content_type else get_content_type(ext)
-    key = f"{uuid.uuid4().hex}.{ext}"
+    key = f"{AVATAR_OSS_FOLDER}/{uuid.uuid4().hex}.{ext}" if is_avatar else f"{uuid.uuid4().hex}.{ext}"
 
     try:
         bucket = get_oss_bucket()
@@ -1257,7 +1331,7 @@ def get_user_profile(username):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, username, role, status, created_at
+        SELECT id, username, role, status, created_at, avatar_url
         FROM users WHERE username = ? AND status = 'active'
     ''', (username,))
     row = cursor.fetchone()
@@ -1278,7 +1352,8 @@ def get_user_profile(username):
         'username': row['username'],
         'role': row['role'],
         'created_at': row['created_at'],
-        'posts_count': posts_count
+        'posts_count': posts_count,
+        'avatar_url': get_avatar_url(row['avatar_url'])
     }
 
     # 获取该用户的帖子（非本人只展示公开的帖子）
@@ -1355,7 +1430,7 @@ def get_conversations():
         other_id = r['other_id']
 
         # 取用户名
-        cursor.execute('SELECT username FROM users WHERE id = ?', (other_id,))
+        cursor.execute('SELECT username, avatar_url FROM users WHERE id = ?', (other_id,))
         u = cursor.fetchone()
         if not u:
             continue
@@ -1378,6 +1453,7 @@ def get_conversations():
         conversations.append({
             'user_id': other_id,
             'username': u['username'],
+            'avatar_url': get_avatar_url(u['avatar_url']),
             'last_content': last_msg['content'] if last_msg else '',
             'last_type': last_msg['content_type'] if last_msg else 'text',
             'last_ts': r['last_ts'],
@@ -1404,7 +1480,7 @@ def get_messages(other_user_id):
     cursor.execute('''
         SELECT m.id, m.from_user_id, m.to_user_id, m.content,
                m.content_type, m.media_url, m.timestamp, m.is_read,
-               u.username as from_username
+               u.username as from_username, u.avatar_url as from_avatar_url
         FROM messages m
         JOIN users u ON m.from_user_id = u.id
         WHERE (m.from_user_id = ? AND m.to_user_id = ?)
@@ -1426,7 +1502,8 @@ def get_messages(other_user_id):
         'media_url': r['media_url'],
         'timestamp': r['timestamp'],
         'is_read': r['is_read'],
-        'from_username': r['from_username']
+        'from_username': r['from_username'],
+        'from_avatar_url': get_avatar_url(r['from_avatar_url'])
     } for r in rows]
 
     return jsonify({'success': True, 'data': messages})
@@ -1536,9 +1613,9 @@ if __name__ == '__main__':
     # 配置 OSS CORS（允许网站直传文件）
     setup_oss_cors()
 
-    # DEBUG_MODE = True     # 改成 False 即可切换为 waitress 生产模式运行
+    DEBUG_MODE = True     # 改成 False 即可切换为 waitress 生产模式运行
 
-    DEBUG_MODE = False
+    # DEBUG_MODE = False
     
          # 改成 False 即可切换为 waitress 生产模式运行
     if DEBUG_MODE:
