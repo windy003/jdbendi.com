@@ -227,6 +227,12 @@
             height: 100%;
             object-fit: cover;
         }
+        .image-preview-item img { cursor: pointer; }
+        .image-preview-item video { pointer-events: none; cursor: pointer; }
+        .image-preview-item .video-play-icon {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            color: #fff; font-size: 26px; text-shadow: 0 1px 4px rgba(0,0,0,0.7); pointer-events: none;
+        }
 
         .image-preview-item .remove-image {
             position: absolute;
@@ -456,6 +462,44 @@
             border: none; color: white; font-size: 22px; width: 42px; height: 42px;
             border-radius: 50%; cursor: pointer;
         }
+
+        /* 视频预览灯箱（发布前点击视频缩略图播放） */
+        #videoLightbox {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 9999; align-items: center; justify-content: center;
+        }
+        #videoLightbox.active { display: flex; }
+        #videoLightboxPlayer { max-width: 100%; max-height: 100%; }
+        #videoLightboxClose {
+            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.2);
+            border: none; color: white; font-size: 22px; width: 42px; height: 42px;
+            border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 1;
+        }
+
+        /* 图片放大灯箱（发布/编辑时点击已上传图片查看大图） */
+        #imgLightbox {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 9999; flex-direction: column;
+            align-items: center; justify-content: center;
+        }
+        #imgLightbox.active { display: flex; }
+        #imgLightboxImg { max-width: 95%; max-height: 80vh; object-fit: contain; border-radius: 8px; }
+        #imgLightboxClose {
+            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.2);
+            border: none; color: white; font-size: 22px; width: 42px; height: 42px;
+            border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        #imgLightboxCounter {
+            position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+            color: white; font-size: 14px; background: rgba(0,0,0,0.4); padding: 4px 12px; border-radius: 12px;
+        }
+        .img-lb-nav {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            background: rgba(255,255,255,0.2); border: none; color: white; font-size: 32px;
+            width: 48px; height: 48px; border-radius: 50%; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #imgLbPrev { left: 8px; } #imgLbNext { right: 8px; }
     </style>
 </head>
 <body>
@@ -556,6 +600,21 @@
         <img id="avatarLightboxImg" alt="头像">
     </div>
 
+    <!-- 视频预览灯箱 -->
+    <div id="videoLightbox">
+        <button id="videoLightboxClose" onclick="closeVideoLightbox()">✕</button>
+        <video id="videoLightboxPlayer" controls playsinline></video>
+    </div>
+
+    <!-- 图片放大灯箱 -->
+    <div id="imgLightbox">
+        <button id="imgLightboxClose" onclick="closeImgLightbox()">✕</button>
+        <div id="imgLightboxCounter"></div>
+        <button class="img-lb-nav" id="imgLbPrev" onclick="imgLbNav(-1)">&#8249;</button>
+        <img id="imgLightboxImg" alt="">
+        <button class="img-lb-nav" id="imgLbNext" onclick="imgLbNav(1)">&#8250;</button>
+    </div>
+
     <script src="{{ url_for('static', filename='compressor.min.js') }}"></script>
     <script>
         let posts = [];
@@ -595,6 +654,86 @@
         });
         document.getElementById('avatarLightbox').addEventListener('click', e => {
             if (e.target.id === 'avatarLightbox') closeAvatarLightbox();
+        });
+
+        // 视频预览灯箱（发布前点击视频缩略图播放）
+        let videoLbHistoryPushed = false;
+        function playVideoPreview(src) {
+            if (!src) return;
+            const player = document.getElementById('videoLightboxPlayer');
+            player.src = src;
+            document.getElementById('videoLightbox').classList.add('active');
+            player.play().catch(() => {});
+            videoLbHistoryPushed = true;
+            history.pushState({ videoLightbox: true }, '');
+        }
+        function closeVideoLightbox() {
+            if (videoLbHistoryPushed) {
+                videoLbHistoryPushed = false;
+                history.back();
+            } else {
+                hideVideoLightbox();
+            }
+        }
+        function hideVideoLightbox() {
+            const player = document.getElementById('videoLightboxPlayer');
+            player.pause();
+            player.src = '';
+            document.getElementById('videoLightbox').classList.remove('active');
+        }
+        window.addEventListener('popstate', () => {
+            if (document.getElementById('videoLightbox').classList.contains('active')) {
+                videoLbHistoryPushed = false;
+                hideVideoLightbox();
+            }
+        });
+        document.getElementById('videoLightbox').addEventListener('click', e => {
+            if (e.target.id === 'videoLightbox') closeVideoLightbox();
+        });
+
+        // 图片放大灯箱（发布/编辑时点击已上传图片查看大图）
+        let imgLbIdx = 0, imgLbHistoryPushed = false;
+        function openImgLightbox(idx) {
+            imgLbIdx = idx;
+            updateImgLb();
+            document.getElementById('imgLightbox').classList.add('active');
+            imgLbHistoryPushed = true;
+            history.pushState({ imgLightbox: true }, '');
+        }
+        function closeImgLightbox() {
+            if (imgLbHistoryPushed) {
+                imgLbHistoryPushed = false;
+                history.back();
+            } else {
+                hideImgLightbox();
+            }
+        }
+        function hideImgLightbox() {
+            document.getElementById('imgLightbox').classList.remove('active');
+        }
+        function updateImgLb() {
+            document.getElementById('imgLightboxImg').src = getMediaUrl(uploadedImages[imgLbIdx]);
+            const has = uploadedImages.length > 1;
+            document.getElementById('imgLightboxCounter').textContent = has ? (imgLbIdx+1)+' / '+uploadedImages.length : '';
+            document.getElementById('imgLightboxCounter').style.display = has ? 'block' : 'none';
+            document.getElementById('imgLbPrev').style.display = has ? 'flex' : 'none';
+            document.getElementById('imgLbNext').style.display = has ? 'flex' : 'none';
+        }
+        function imgLbNav(dir) { imgLbIdx = (imgLbIdx + dir + uploadedImages.length) % uploadedImages.length; updateImgLb(); }
+        window.addEventListener('popstate', () => {
+            if (document.getElementById('imgLightbox').classList.contains('active')) {
+                imgLbHistoryPushed = false;
+                hideImgLightbox();
+            }
+        });
+        document.getElementById('imgLightbox').addEventListener('click', e => {
+            if (e.target.id === 'imgLightbox') closeImgLightbox();
+        });
+        document.addEventListener('keydown', e => {
+            if (!document.getElementById('imgLightbox').classList.contains('active')) return;
+            if (e.key === 'ArrowLeft') imgLbNav(-1);
+            else if (e.key === 'ArrowRight') imgLbNav(1);
+            else if (e.key === 'Escape') closeImgLightbox();
         });
 
         let sseSource = null;
@@ -895,8 +1034,8 @@
             const previewContainer = document.getElementById('imagePreview');
             previewContainer.innerHTML = uploadedImages.map((url, index) => `
                 <div class="image-preview-item">
-                    <img src="${getMediaUrl(url)}" alt="预览">
-                    <button type="button" class="remove-image" onclick="removeImage(${index})">×</button>
+                    <img src="${getMediaUrl(url)}" alt="预览" onclick="openImgLightbox(${index})">
+                    <button type="button" class="remove-image" onclick="event.stopPropagation(); removeImage(${index})">×</button>
                 </div>
             `).join('');
         }
@@ -936,9 +1075,10 @@
         function renderVideoPreview() {
             const container = document.getElementById('videoPreview');
             container.innerHTML = uploadedVideos.map((url, index) => `
-                <div class="image-preview-item">
+                <div class="image-preview-item" onclick="playVideoPreview('${getMediaUrl(url)}')">
                     <video src="${getMediaUrl(url)}" preload="metadata" muted playsinline onloadedmetadata="this.currentTime=Math.min(1,(this.duration||1)/2)"></video>
-                    <button type="button" class="remove-image" onclick="removeVideo(${index})">×</button>
+                    <span class="video-play-icon">▶</span>
+                    <button type="button" class="remove-image" onclick="event.stopPropagation(); removeVideo(${index})">×</button>
                 </div>
             `).join('');
         }
