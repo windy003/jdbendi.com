@@ -439,7 +439,7 @@
             if (isLoggedIn && user) {
                 const centerLink = user.role === 'admin'
                     ? '<a href="/admin" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">管理后台</a>'
-                    : `<a href="/user_center" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;position:relative;">个人中心<span id="notifBadge" style="position:absolute;top:-8px;right:-10px;background:#f44336;color:white;border-radius:50%;min-width:16px;height:16px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px;"></span></a>`;
+                    : `<a href="/user_center" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;position:relative;">个人中心(发布帖子)<span id="notifBadge" style="position:absolute;top:-8px;right:-10px;background:#f44336;color:white;border-radius:50%;min-width:16px;height:16px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px;"></span></a>`;
                 nav.innerHTML = `
                     <span style="color:#667eea;font-weight:600;">欢迎, <img class="nav-avatar" src="${getMediaUrl(user.avatar_url)}" alt="头像" onclick="openAvatarLightbox('${getMediaUrl(user.avatar_url)}')">${escapeHtml(user.username)}</span> |
                     ${centerLink} |

@@ -153,7 +153,7 @@
             if (currentUser) {
                 const link = currentUser.role === 'admin'
                     ? '<a href="/admin">管理后台</a>'
-                    : '<a href="/user_center">个人中心</a>';
+                    : '<a href="/user_center">个人中心(发布帖子)</a>';
                 el.innerHTML = `<span style="color:#667eea;font-weight:600;">${escapeHtml(currentUser.username)}</span> | ${link} | <a href="/dm">💬私信</a>`;
             } else {
                 el.innerHTML = '<a href="/login">登录</a> | <a href="/register">注册</a>';
