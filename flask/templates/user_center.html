@@ -554,10 +554,10 @@
                 </div>
                 <div class="form-group">
                     <div class="content-label-row">
-                        <label for="content">详细内容</label>
+                        <label for="content">详细内容（选填）</label>
                         <button type="button" id="contentFullscreenBtn" class="fullscreen-btn" onclick="toggleContentFullscreen()" title="全屏编辑详细内容">全屏编辑详细内容</button>
                     </div>
-                    <textarea id="content" placeholder="请输入详细信息..." required></textarea>
+                    <textarea id="content" placeholder="请输入详细信息..."></textarea>
                 </div>
                 <div class="form-group">
                     <label for="contact">联系方式（选填）</label>
@@ -1300,9 +1300,8 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    resetForm();
-                    loadMyPosts();
                     alert(isEditing ? '信息更新成功！' : '信息发布成功！');
+                    window.location.href = '/';
                 } else {
                     alert((isEditing ? '更新' : '发布') + '失败：' + result.message);
                 }
