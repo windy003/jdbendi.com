@@ -540,7 +540,7 @@
                         <div class="post-meta-row">
                             <div class="post-time">${postTimeLabel(post)}</div>
                             <div>
-                                ${currentUser && post.user_id === currentUser.id ? `<a href="/user_center?edit=${post.id}" class="detail-link" style="color:#4CAF50;margin-right:10px;">✏️ 编辑</a>` : ''}
+                                ${currentUser && post.user_id === currentUser.id ? `<a href="/user_center?edit=${post.id}" class="detail-link" style="color:#4CAF50;margin-right:10px;">✏️ 编辑</a><a href="javascript:void(0)" onclick="deletePost(${post.id})" class="detail-link" style="color:#e53935;margin-right:10px;">🗑️ 删除</a>` : ''}
                                 <a href="/post/${post.id}" class="detail-link">查看详情 →</a>
                             </div>
                         </div>
@@ -675,6 +675,20 @@
                 } else { alert(r.message); }
             } catch(e) { alert('发送失败'); }
             finally { btn.disabled = false; btn.textContent = '发送'; }
+        }
+
+        async function deletePost(postId) {
+            if (!confirm('确定删除这条帖子？删除后无法恢复。')) return;
+            const res = await fetch('/api/posts/' + postId, { method: 'DELETE' });
+            const r = await res.json();
+            if (r.success) {
+                posts = posts.filter(p => p.id !== postId);
+                const card = document.getElementById('post-card-' + postId);
+                if (card) card.remove();
+                if (!posts.length) document.getElementById('postsSection').innerHTML = '<div class="empty-state">暂无信息</div>';
+            } else {
+                alert(r.message || '删除失败');
+            }
         }
 
         async function deleteComment(postId, commentId) {

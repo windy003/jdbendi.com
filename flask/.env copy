@@ -2,6 +2,9 @@ ADMIN_USERNAME=
 ADMIN_PASSWORD=
 SECRET_KEY=
 
+# Server酱 SendKey（微信推送新帖子/新评论通知给站长）https://sct.ftqq.com/
+SERVERCHAN_SENDKEY=
+
 # Cloudflare R2 配置（在 Cloudflare 控制台 -> R2 -> 管理API令牌 中获取）
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=

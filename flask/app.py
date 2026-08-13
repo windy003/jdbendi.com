@@ -16,6 +16,7 @@ import mimetypes
 import subprocess
 import tempfile
 import shutil
+import requests
 
 # 注册 .apk 的 MIME 类型，避免静态文件被当成 application/octet-stream 下载成 .bin
 mimetypes.add_type('application/vnd.android.package-archive', '.apk')
@@ -48,6 +49,9 @@ ADMIN_PASSWORD_HASH = generate_password_hash(admin_password)
 
 # 站长联系方式
 ADMIN_CONTACT = os.getenv('ADMIN_CONTACT', "周秋良:手机:15868404601,微信同号")
+
+# Server酱 推送配置（新帖子/新评论时微信通知站长）
+SERVERCHAN_SENDKEY = os.getenv('SERVERCHAN_SENDKEY', '')
 
 # 媒体上传配置
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -717,6 +721,11 @@ def create_post():
     post_id = cursor.lastrowid
     conn.close()
 
+    notify_admin(
+        f"新帖子：{data.get('title') or '(无标题)'}",
+        f"分类：{data.get('category') or '-'}\n发布人：{session.get('username') or '-'}\n\n{(data.get('content') or '')[:200]}"
+    )
+
     new_post = {
         'id': post_id,
         'category': data.get('category'),
@@ -862,8 +871,8 @@ def delete_post(post_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    # 先获取图片和视频列表，删除媒体文件
-    cursor.execute('SELECT images, videos FROM posts WHERE id = ?', (post_id,))
+    # 先获取标题、图片和视频列表，删除媒体文件
+    cursor.execute('SELECT title, images, videos FROM posts WHERE id = ?', (post_id,))
     row = cursor.fetchone()
     if row:
         if row['images']:
@@ -877,6 +886,12 @@ def delete_post(post_id):
     cursor.execute('DELETE FROM posts WHERE id = ?', (post_id,))
     conn.commit()
     conn.close()
+
+    if row:
+        notify_admin(
+            f"帖子被删除：{row['title'] or '(无标题)'}",
+            f"操作人：{session.get('username') or '-'}\n帖子ID：{post_id}"
+        )
 
     return jsonify({'success': True, 'message': '删除成功'})
 
@@ -1116,6 +1131,23 @@ def cleanup_notifications(cursor, user_id):
         )
     ''', (user_id, user_id, NOTIF_MAX_PER_USER))
 
+def _serverchan_push(title, desp=''):
+    """实际发起 Server酱 推送请求（在后台线程中执行，避免阻塞接口响应）"""
+    try:
+        requests.post(
+            f'https://sctapi.ftqq.com/{SERVERCHAN_SENDKEY}.send',
+            data={'title': title, 'desp': desp},
+            timeout=5
+        )
+    except requests.RequestException as e:
+        print(f'Server酱推送失败: {e}')
+
+def notify_admin(title, desp=''):
+    """通过 Server酱 微信推送通知站长（未配置 SENDKEY 时静默跳过）"""
+    if not SERVERCHAN_SENDKEY:
+        return
+    threading.Thread(target=_serverchan_push, args=(title, desp), daemon=True).start()
+
 def send_notification(cursor, user_id, ntype, post_id, comment_id, from_user_id, content):
     """发送通知（不重复通知自己）"""
     if user_id == from_user_id:
@@ -1169,7 +1201,7 @@ def create_comment(post_id):
     cursor = conn.cursor()
 
     # 验证帖子存在
-    cursor.execute('SELECT user_id FROM posts WHERE id = ?', (post_id,))
+    cursor.execute('SELECT user_id, title FROM posts WHERE id = ?', (post_id,))
     post_row = cursor.fetchone()
     if not post_row:
         conn.close()
@@ -1214,6 +1246,11 @@ def create_comment(post_id):
 
     conn.commit()
 
+    notify_admin(
+        f"新评论：{post_row['title'] or f'帖子 #{post_id}'}",
+        f"评论人：{session.get('username') or '-'}\n\n{content}"
+    )
+
     # 返回完整评论对象
     cursor.execute('''
         SELECT c.id, c.post_id, c.user_id, c.parent_id, c.content, c.timestamp, u.username
@@ -1235,7 +1272,11 @@ def create_comment(post_id):
 def delete_comment(comment_id):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT user_id FROM comments WHERE id = ?', (comment_id,))
+    cursor.execute('''
+        SELECT c.user_id, c.post_id, c.content, p.title AS post_title
+        FROM comments c LEFT JOIN posts p ON c.post_id = p.id
+        WHERE c.id = ?
+    ''', (comment_id,))
     row = cursor.fetchone()
     if not row:
         conn.close()
@@ -1246,6 +1287,13 @@ def delete_comment(comment_id):
     cursor.execute('DELETE FROM comments WHERE id = ?', (comment_id,))
     conn.commit()
     conn.close()
+
+    post_label = row['post_title'] or f"帖子 #{row['post_id']}"
+    notify_admin(
+        f"评论被删除：{post_label}",
+        f"操作人：{session.get('username') or '-'}\n\n{row['content'] or ''}"
+    )
+
     return jsonify({'success': True, 'message': '评论已删除'})
 
 # ========== 通知 API ==========
