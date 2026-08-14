@@ -217,6 +217,22 @@
                     <div class="stat-value">-</div>
                     <div class="stat-label">今日发布</div>
                 </div>
+                <div class="stat-card">
+                    <div class="stat-value">-</div>
+                    <div class="stat-label">总访问量</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">-</div>
+                    <div class="stat-label">今日访问量</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">-</div>
+                    <div class="stat-label">24小时独立访客</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">-</div>
+                    <div class="stat-label">累计独立访客</div>
+                </div>
             </div>
         </div>
 
@@ -280,6 +296,22 @@
                             <div class="stat-value">${stats.posts_today}</div>
                             <div class="stat-label">今日发布</div>
                         </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${stats.total_visits}</div>
+                            <div class="stat-label">总访问量</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${stats.visits_today}</div>
+                            <div class="stat-label">今日访问量</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${stats.unique_visitors_today}</div>
+                            <div class="stat-label">24小时独立访客</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${stats.total_unique_visitors}</div>
+                            <div class="stat-label">累计独立访客</div>
+                        </div>
                     `;
                 }
             } catch (error) {
@@ -321,7 +353,8 @@
                             ID: ${user.id} |
                             发布数: ${user.posts_count} |
                             注册: ${formatDate(user.created_at)} |
-                            ${user.last_login ? '最后登录: ' + formatDate(user.last_login) : '从未登录'}
+                            ${user.last_login ? '最后登录: ' + formatDate(user.last_login) : '从未登录'} |
+                            ${user.last_active ? '最近活跃: ' + formatDate(user.last_active) : '从未活跃'}
                         </div>
                     </div>
                     <div class="user-actions">

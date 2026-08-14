@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, send_from_directory
+from flask import Flask, render_template, request, jsonify, session, send_from_directory, redirect
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -216,7 +216,21 @@ def init_db():
         )
     ''')
 
+    # 创建访问记录表（用于统计网站访问量）
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS visits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL,
+            ip TEXT,
+            user_agent TEXT,
+            user_id INTEGER,
+            timestamp INTEGER NOT NULL
+        )
+    ''')
+
     # 创建索引
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_visits_timestamp ON visits(timestamp)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_visits_ip ON visits(ip)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_username ON users(username)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_role ON users(role)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_status ON users(status)')
@@ -432,6 +446,31 @@ def post_owner_or_admin(f):
         return f(post_id, *args, **kwargs)
     return decorated_function
 
+# ========== 访问量统计 ==========
+BOT_UA_PATTERN = re.compile(r'bot|spider|crawl|curl|wget|python-requests|headless', re.I)
+
+def get_client_ip():
+    """获取真实访客 IP：网站经 Cloudflare 代理，request.remote_addr 拿到的是 CF 节点 IP"""
+    return (request.headers.get('CF-Connecting-IP')
+            or request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+            or request.remote_addr)
+
+@app.before_request
+def track_visit():
+    if request.method != 'GET' or request.path.startswith(('/api/', '/static/', '/admin')):
+        return
+    ua = request.headers.get('User-Agent', '')
+    if not ua or BOT_UA_PATTERN.search(ua):
+        return
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO visits (path, ip, user_agent, user_id, timestamp) VALUES (?, ?, ?, ?, ?)',
+        (request.path, get_client_ip(), ua[:255], session.get('user_id'), int(time.time() * 1000))
+    )
+    conn.commit()
+    conn.close()
+
 # 路由：前台页面
 @app.route('/')
 def index():
@@ -439,6 +478,11 @@ def index():
     # 转成 JSON 字符串直接嵌入首屏 HTML，避免页面打开后再多一次 /api/posts 网络往返
     initial_posts_json = json.dumps(initial_posts, ensure_ascii=False).replace('</', '<\\/')
     return render_template('index.html', admin_contact=ADMIN_CONTACT, initial_posts_json=initial_posts_json)
+
+# 兼容旧的静态站点链接（如收藏夹、外部反链指向 /index.html）
+@app.route('/index.html')
+def index_html_redirect():
+    return redirect('/', code=301)
 
 # 路由：帖子详情页
 @app.route('/post/<int:post_id>')
@@ -1011,7 +1055,9 @@ def get_users():
     conn = get_db()
     cursor = conn.cursor()
 
-    # 获取用户列表及其发布数量
+    # 获取用户列表及其发布数量，按最近活跃时间由近到远排序
+    # 最近活跃 = 访问记录（visits 表）和登录时间（last_login）中较新的一个：
+    # visits 表只从本次功能上线起才有数据，且不记录 /admin 页面的访问，单靠它排序会让老用户和站长账号排到最后
     cursor.execute('''
         SELECT
             u.id,
@@ -1020,11 +1066,11 @@ def get_users():
             u.status,
             u.created_at,
             u.last_login,
-            COUNT(p.id) as posts_count
+            (SELECT COUNT(*) FROM posts p WHERE p.user_id = u.id) as posts_count,
+            (SELECT MAX(timestamp) FROM visits v WHERE v.user_id = u.id) as last_visit,
+            MAX(COALESCE((SELECT MAX(timestamp) FROM visits v WHERE v.user_id = u.id), 0), COALESCE(u.last_login, 0)) as last_active
         FROM users u
-        LEFT JOIN posts p ON u.id = p.user_id
-        GROUP BY u.id
-        ORDER BY u.created_at DESC
+        ORDER BY last_active DESC
     ''')
 
     users = []
@@ -1036,7 +1082,9 @@ def get_users():
             'status': row['status'],
             'created_at': row['created_at'],
             'last_login': row['last_login'],
-            'posts_count': row['posts_count']
+            'posts_count': row['posts_count'],
+            'last_visit': row['last_visit'],
+            'last_active': row['last_active'] or None
         }
         users.append(user)
 
@@ -1101,6 +1149,20 @@ def get_stats():
     cursor.execute('SELECT COUNT(*) as count FROM posts WHERE timestamp > ?', (today_timestamp,))
     posts_today = cursor.fetchone()['count']
 
+    # 总访问量 / 独立访客数
+    cursor.execute('SELECT COUNT(*) as count FROM visits')
+    total_visits = cursor.fetchone()['count']
+
+    cursor.execute('SELECT COUNT(DISTINCT ip) as count FROM visits')
+    total_unique_visitors = cursor.fetchone()['count']
+
+    # 今日访问量 / 独立访客数（最近24小时）
+    cursor.execute('SELECT COUNT(*) as count FROM visits WHERE timestamp > ?', (today_timestamp,))
+    visits_today = cursor.fetchone()['count']
+
+    cursor.execute('SELECT COUNT(DISTINCT ip) as count FROM visits WHERE timestamp > ?', (today_timestamp,))
+    unique_visitors_today = cursor.fetchone()['count']
+
     conn.close()
 
     stats = {
@@ -1108,7 +1170,11 @@ def get_stats():
         'active_users': active_users,
         'disabled_users': disabled_users,
         'total_posts': total_posts,
-        'posts_today': posts_today
+        'posts_today': posts_today,
+        'total_visits': total_visits,
+        'total_unique_visitors': total_unique_visitors,
+        'visits_today': visits_today,
+        'unique_visitors_today': unique_visitors_today
     }
 
     return jsonify({'success': True, 'data': stats})
