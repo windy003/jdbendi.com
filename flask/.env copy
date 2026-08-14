@@ -2,8 +2,16 @@ ADMIN_USERNAME=
 ADMIN_PASSWORD=
 SECRET_KEY=
 
-# Server酱 SendKey（微信推送新帖子/新评论通知给站长）https://sct.ftqq.com/
-SERVERCHAN_SENDKEY=
+# 邮件通知配置（新帖子/删帖/新评论/删评论时发邮件通知站长）
+# SMTP_HOST 示例：QQ邮箱 smtp.qq.com（端口465，SSL）；163邮箱 smtp.163.com（端口465，SSL）
+# SMTP_USER/SMTP_PASSWORD 用发件邮箱账号+邮箱的"授权码"（不是登录密码），需先在邮箱设置里开启SMTP服务并生成授权码
+# ADMIN_EMAIL 是接收通知的收件邮箱
+SMTP_HOST=
+SMTP_PORT=465
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_USE_SSL=true
+ADMIN_EMAIL=
 
 # Cloudflare R2 配置（在 Cloudflare 控制台 -> R2 -> 管理API令牌 中获取）
 R2_ACCOUNT_ID=

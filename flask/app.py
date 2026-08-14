@@ -16,7 +16,9 @@ import mimetypes
 import subprocess
 import tempfile
 import shutil
-import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
 
 # 注册 .apk 的 MIME 类型，避免静态文件被当成 application/octet-stream 下载成 .bin
 mimetypes.add_type('application/vnd.android.package-archive', '.apk')
@@ -50,8 +52,13 @@ ADMIN_PASSWORD_HASH = generate_password_hash(admin_password)
 # 站长联系方式
 ADMIN_CONTACT = os.getenv('ADMIN_CONTACT', "周秋良:手机:15868404601,微信同号")
 
-# Server酱 推送配置（新帖子/新评论时微信通知站长）
-SERVERCHAN_SENDKEY = os.getenv('SERVERCHAN_SENDKEY', '')
+# 邮件推送配置（新帖子/新评论/删除时发送邮件通知站长）
+SMTP_HOST = os.getenv('SMTP_HOST', '')
+SMTP_PORT = int(os.getenv('SMTP_PORT', '465'))
+SMTP_USER = os.getenv('SMTP_USER', '')
+SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
+SMTP_USE_SSL = os.getenv('SMTP_USE_SSL', 'true').lower() != 'false'
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', '')
 
 # 媒体上传配置
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -1131,22 +1138,31 @@ def cleanup_notifications(cursor, user_id):
         )
     ''', (user_id, user_id, NOTIF_MAX_PER_USER))
 
-def _serverchan_push(title, desp=''):
-    """实际发起 Server酱 推送请求（在后台线程中执行，避免阻塞接口响应）"""
+def _send_notification_email(title, desp=''):
+    """实际发起通知邮件发送（在后台线程中执行，避免阻塞接口响应）"""
     try:
-        requests.post(
-            f'https://sctapi.ftqq.com/{SERVERCHAN_SENDKEY}.send',
-            data={'title': title, 'desp': desp},
-            timeout=5
-        )
-    except requests.RequestException as e:
-        print(f'Server酱推送失败: {e}')
+        msg = MIMEText(desp, 'plain', 'utf-8')
+        msg['Subject'] = Header(title, 'utf-8')
+        msg['From'] = SMTP_USER
+        msg['To'] = ADMIN_EMAIL
+        if SMTP_USE_SSL:
+            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10)
+        else:
+            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
+            server.starttls()
+        try:
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_USER, [ADMIN_EMAIL], msg.as_string())
+        finally:
+            server.quit()
+    except Exception as e:
+        print(f'通知邮件发送失败: {e}')
 
 def notify_admin(title, desp=''):
-    """通过 Server酱 微信推送通知站长（未配置 SENDKEY 时静默跳过）"""
-    if not SERVERCHAN_SENDKEY:
+    """通过邮件通知站长（未配置 SMTP 时静默跳过）"""
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD and ADMIN_EMAIL):
         return
-    threading.Thread(target=_serverchan_push, args=(title, desp), daemon=True).start()
+    threading.Thread(target=_send_notification_email, args=(title, desp), daemon=True).start()
 
 def send_notification(cursor, user_id, ntype, post_id, comment_id, from_user_id, content):
     """发送通知（不重复通知自己）"""
