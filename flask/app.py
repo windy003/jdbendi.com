@@ -479,10 +479,6 @@ def index():
     initial_posts_json = json.dumps(initial_posts, ensure_ascii=False).replace('</', '<\\/')
     return render_template('index.html', admin_contact=ADMIN_CONTACT, initial_posts_json=initial_posts_json)
 
-# 兼容旧的静态站点链接（如收藏夹、外部反链指向 /index.html）
-@app.route('/index.html')
-def index_html_redirect():
-    return redirect('/', code=301)
 
 # 路由：帖子详情页
 @app.route('/post/<int:post_id>')
