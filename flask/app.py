@@ -17,6 +17,8 @@ import subprocess
 import tempfile
 import shutil
 import smtplib
+import ipaddress
+import requests
 from email.mime.text import MIMEText
 from email.header import Header
 
@@ -1174,6 +1176,65 @@ def get_stats():
     }
 
     return jsonify({'success': True, 'data': stats})
+
+# API：获取最近 24 小时独立访客列表（仅管理员）
+@app.route('/api/admin/visitors/recent', methods=['GET'])
+@admin_required
+def get_recent_visitors():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    since = int(time.time() * 1000) - 24 * 60 * 60 * 1000
+    cursor.execute('''
+        SELECT
+            v.ip,
+            COUNT(*) as visit_count,
+            MIN(v.timestamp) as first_visit,
+            MAX(v.timestamp) as last_visit,
+            (
+                SELECT u.username FROM visits v2
+                JOIN users u ON u.id = v2.user_id
+                WHERE v2.ip = v.ip AND v2.timestamp > ? AND v2.user_id IS NOT NULL
+                ORDER BY v2.timestamp DESC LIMIT 1
+            ) as username
+        FROM visits v
+        WHERE v.timestamp > ? AND v.ip IS NOT NULL AND v.ip != ''
+        GROUP BY v.ip
+        ORDER BY last_visit DESC
+        LIMIT 500
+    ''', (since, since))
+
+    visitors = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return jsonify({'success': True, 'data': visitors})
+
+# API：查询 IP 归属地（仅管理员，按需调用，代理 ip-api.com 避免前端跨域/混合内容问题）
+@app.route('/api/admin/ip-geo', methods=['GET'])
+@admin_required
+def get_ip_geo():
+    ip = request.args.get('ip', '').strip()
+    if not ip:
+        return jsonify({'success': False, 'message': '缺少 ip 参数'}), 400
+
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+    except ValueError:
+        return jsonify({'success': False, 'message': 'IP 格式无效'}), 400
+
+    if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved:
+        return jsonify({'success': True, 'data': {'query': ip, 'status': 'fail', 'message': '内网/本地地址，无法查询归属地'}})
+
+    try:
+        resp = requests.get(
+            f'http://ip-api.com/json/{ip}',
+            params={'lang': 'zh-CN', 'fields': 'status,message,country,regionName,city,isp,org,query'},
+            timeout=5
+        )
+        resp.raise_for_status()
+        return jsonify({'success': True, 'data': resp.json()})
+    except requests.RequestException as e:
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)}'}), 502
 
 # ========== 评论 API ==========
 
