@@ -219,6 +219,7 @@
         <div style="text-align: center; margin-top: 8px;">
             <a href="{{ url_for('static', filename='app-release.apk') }}" download style="color: #667eea; text-decoration: none; font-size: 15px; font-weight: 600;">📱 安卓应用下载(版本:2026/4/3-1,请尽量使用最新版本,基本上网页版本也够用)</a>
         </div>
+        <div style="text-align: center; margin-top: 8px;color: #667eea; font-size: 15px; font-weight: 600;">本网站在加载首页时,会自动弹窗提示私信状态信息,请放心使用!</div>
     </header>
 
     <div class="container">
@@ -390,6 +391,7 @@
                     updateNavBar(true, r.user);
                     await fetchUnreadCount();
                     await fetchDmUnreadCount();
+                    checkDmMessageStatus();
                 } else {
                     currentUser = null;
                     updateNavBar(false, null);
@@ -401,6 +403,11 @@
             await fetchUnreadCount();
             await fetchDmUnreadCount();
             alert(`未读消息 ${unreadCount + dmUnreadCount} 条`);
+        }
+
+        // 每次打开主页时自动弹窗提示私信消息状态
+        function checkDmMessageStatus() {
+            alert(dmUnreadCount > 0 ? `您有 ${dmUnreadCount} 条未读私信` : '暂无未读私信');
         }
 
         async function fetchUnreadCount() {
