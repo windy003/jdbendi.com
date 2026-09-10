@@ -58,6 +58,11 @@
         .category-找对象 { background: #E91E63; }
         .category-维权\/曝光 { background: #F44336; }
         .category-顺风车 { background: #3F51B5; }
+        .post-private-badge {
+            display: inline-block; padding: 4px 10px; border-radius: 12px;
+            font-size: 12px; font-weight: 600; color: white; margin-left: 6px; flex-shrink: 0;
+            background: #757575;
+        }
         .post-author { font-size: 12px; color: #888; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
         .post-author span { color: #667eea; font-weight: 600; }
         .post-author-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0; cursor: pointer; }
@@ -533,6 +538,7 @@
                     <div class="post-header">
                         <h3 class="post-title"><a href="/post/${post.id}">${escapeHtml(post.title)}</a></h3>
                         <span class="post-category category-${post.category}">${post.category}</span>
+                        ${currentUser && post.user_id === currentUser.id && !post.is_public ? `<span class="post-private-badge">🔒仅自己可见</span>` : ''}
                     </div>
                     <div class="post-author">
                         发布者：<img class="post-author-avatar" src="${getMediaUrl(post.author_avatar_url)}" alt="头像" onclick="openAvatarLightbox('${getMediaUrl(post.author_avatar_url)}')"><a href="/user/${encodeURIComponent(post.author || '')}" style="color:#667eea;font-weight:600;text-decoration:none;">${escapeHtml(post.author || '匿名')}</a>
