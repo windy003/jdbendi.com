@@ -360,7 +360,7 @@
                     <div class="stat-value">-</div>
                     <div class="stat-label">24小时独立访客</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card clickable" onclick="openAllVisitorsModal()">
                     <div class="stat-value">-</div>
                     <div class="stat-label">累计独立访客</div>
                 </div>
@@ -380,6 +380,16 @@
                 <button class="modal-close" onclick="closeVisitorsModal()">✕</button>
             </div>
             <div class="modal-body" id="visitorsList">加载中...</div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="allVisitorsModal" onclick="if(event.target===this) closeAllVisitorsModal()">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>📊 累计独立访客（有记录以来）</h3>
+                <button class="modal-close" onclick="closeAllVisitorsModal()">✕</button>
+            </div>
+            <div class="modal-body" id="allVisitorsList">加载中...</div>
         </div>
     </div>
 
@@ -449,7 +459,7 @@
                             <div class="stat-value">${stats.unique_visitors_today}</div>
                             <div class="stat-label">24小时独立访客</div>
                         </div>
-                        <div class="stat-card">
+                        <div class="stat-card clickable" onclick="openAllVisitorsModal()">
                             <div class="stat-value">${stats.total_unique_visitors}</div>
                             <div class="stat-label">累计独立访客</div>
                         </div>
@@ -580,6 +590,90 @@
             btn.textContent = '查询中...';
 
             const container = document.getElementById(`geo-${index}`);
+
+            try {
+                const response = await fetch(`/api/admin/ip-geo?ip=${encodeURIComponent(ip)}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    container.innerHTML = `<span class="visitor-geo error">${escapeHtml(result.message || '查询失败')}</span>`;
+                    return;
+                }
+
+                const geo = result.data;
+                if (geo.status !== 'success') {
+                    container.innerHTML = `<span class="visitor-geo error">${escapeHtml(geo.message || '无法查询归属地')}</span>`;
+                    return;
+                }
+
+                const parts = [geo.country, geo.regionName, geo.city].filter(Boolean).join(' · ');
+                const isp = geo.isp || geo.org || '';
+                container.innerHTML = `<span class="visitor-geo">${escapeHtml(parts)}${isp ? ' | ' + escapeHtml(isp) : ''}</span>`;
+            } catch (error) {
+                container.innerHTML = '<span class="visitor-geo error">查询失败，请检查网络连接</span>';
+            }
+        }
+
+        // 打开累计独立访客弹窗
+        function openAllVisitorsModal() {
+            document.getElementById('allVisitorsModal').classList.add('open');
+            loadAllVisitors();
+        }
+
+        function closeAllVisitorsModal() {
+            document.getElementById('allVisitorsModal').classList.remove('open');
+        }
+
+        async function loadAllVisitors() {
+            const listEl = document.getElementById('allVisitorsList');
+            listEl.innerHTML = '加载中...';
+            try {
+                const response = await fetch('/api/admin/visitors/all');
+                const result = await response.json();
+
+                if (!result.success) {
+                    listEl.innerHTML = '<div class="empty-state">加载失败</div>';
+                    return;
+                }
+
+                renderAllVisitors(result.data);
+            } catch (error) {
+                listEl.innerHTML = '<div class="empty-state">加载失败，请检查网络连接</div>';
+            }
+        }
+
+        function renderAllVisitors(visitors) {
+            const listEl = document.getElementById('allVisitorsList');
+
+            if (visitors.length === 0) {
+                listEl.innerHTML = '<div class="empty-state">暂无访客记录</div>';
+                return;
+            }
+
+            listEl.innerHTML = visitors.map((v, index) => `
+                <div class="visitor-row">
+                    <div class="visitor-info">
+                        <div class="visitor-ip">${escapeHtml(v.ip)}</div>
+                        <div class="visitor-meta">
+                            访问 ${v.visit_count} 次 |
+                            首次访问: ${formatDate(v.first_visit)} |
+                            最近访问: ${formatDate(v.last_visit)}
+                            ${v.username ? ' | 用户: ' + escapeHtml(v.username) : ''}
+                        </div>
+                    </div>
+                    <div id="all-geo-${index}">
+                        <button class="btn-geo" onclick="loadAllVisitorIpGeo('${escapeHtml(v.ip)}', ${index}, this)">查看归属地</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 按需查询单个 IP 的归属地（累计独立访客弹窗）
+        async function loadAllVisitorIpGeo(ip, index, btn) {
+            btn.disabled = true;
+            btn.textContent = '查询中...';
+
+            const container = document.getElementById(`all-geo-${index}`);
 
             try {
                 const response = await fetch(`/api/admin/ip-geo?ip=${encodeURIComponent(ip)}`);

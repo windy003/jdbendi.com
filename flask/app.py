@@ -1209,6 +1209,37 @@ def get_recent_visitors():
 
     return jsonify({'success': True, 'data': visitors})
 
+# API：获取有记录以来的全部独立访客列表（仅管理员）
+@app.route('/api/admin/visitors/all', methods=['GET'])
+@admin_required
+def get_all_visitors():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT
+            v.ip,
+            COUNT(*) as visit_count,
+            MIN(v.timestamp) as first_visit,
+            MAX(v.timestamp) as last_visit,
+            (
+                SELECT u.username FROM visits v2
+                JOIN users u ON u.id = v2.user_id
+                WHERE v2.ip = v.ip AND v2.user_id IS NOT NULL
+                ORDER BY v2.timestamp DESC LIMIT 1
+            ) as username
+        FROM visits v
+        WHERE v.ip IS NOT NULL AND v.ip != ''
+        GROUP BY v.ip
+        ORDER BY visit_count DESC
+        LIMIT 2000
+    ''')
+
+    visitors = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return jsonify({'success': True, 'data': visitors})
+
 # API：查询 IP 归属地（仅管理员，按需调用，代理 ip-api.com 避免前端跨域/混合内容问题）
 @app.route('/api/admin/ip-geo', methods=['GET'])
 @admin_required
