@@ -5,3 +5,4 @@ python-dotenv==1.0.0
 oss2==2.18.5
 waitress==3.0.2
 requests==2.34.2
+alibabacloud_dypnsapi20170525

@@ -58,7 +58,13 @@ SECRET_KEY=your-secret-key-here
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=123456
 ADMIN_CONTACT=周秋良:手机:15868404601,微信同号
+ALIBABA_CLOUD_ACCESS_KEY_ID=your-ram-access-key-id
+ALIBABA_CLOUD_ACCESS_KEY_SECRET=your-ram-access-key-secret
+ALIYUN_PNVS_SIGN_NAME=号码认证控制台提供的系统签名
+ALIYUN_PNVS_TEMPLATE_CODE=号码认证控制台提供的系统模板编号
 ```
+
+普通用户登录页默认使用阿里云号码认证服务中的短信认证，也可切换回原有用户名密码登录。首次短信认证成功的手机号会自动创建普通用户账号；原有用户名密码账号继续可用。此接入使用阿里云生成并校验验证码，短信认证、方案名称、系统赠送签名和模板需先在号码认证服务控制台开通/查看。阿里云账号需完成实名认证；个人账号可开通，无需企业资质或自行申请短信签名、模板。服务调用凭证和控制台提供的系统签名、模板编号需配置到服务端 `.env`，勿提交真实密钥。
 
 **方法二：直接修改代码**
 

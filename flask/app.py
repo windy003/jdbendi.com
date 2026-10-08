@@ -19,6 +19,11 @@ import shutil
 import smtplib
 import ipaddress
 import requests
+import secrets
+from alibabacloud_dypnsapi20170525.client import Client as DypnsapiClient
+from alibabacloud_dypnsapi20170525 import models as dypnsapi_models
+from alibabacloud_tea_openapi import models as open_api_models
+from alibabacloud_tea_util.models import RuntimeOptions
 from email.mime.text import MIMEText
 from email.header import Header
 
@@ -80,6 +85,11 @@ OSS_ACCESS_KEY_SECRET = os.getenv('OSS_ACCESS_KEY_SECRET', '')
 OSS_BUCKET_NAME = os.getenv('OSS_BUCKET_NAME', '')
 OSS_ENDPOINT = os.getenv('OSS_ENDPOINT', '')  # 例如: oss-cn-hangzhou.aliyuncs.com
 OSS_PUBLIC_URL = os.getenv('OSS_PUBLIC_URL', '')  # 例如: https://jdbendi.oss-cn-hangzhou.aliyuncs.com
+# 阿里云短信服务（未配置时短信登录接口返回清晰的配置提示）
+SMS_ACCESS_KEY_ID = os.getenv('ALIBABA_CLOUD_ACCESS_KEY_ID', '')
+SMS_ACCESS_KEY_SECRET = os.getenv('ALIBABA_CLOUD_ACCESS_KEY_SECRET', '')
+SMS_SIGN_NAME = os.getenv('ALIYUN_PNVS_SIGN_NAME', '')
+SMS_TEMPLATE_CODE = os.getenv('ALIYUN_PNVS_TEMPLATE_CODE', '')
 # ========================================================
 
 # 数据库文件路径
@@ -157,12 +167,34 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
+            phone TEXT UNIQUE,
             role TEXT NOT NULL DEFAULT 'user',
             status TEXT NOT NULL DEFAULT 'active',
             created_at INTEGER NOT NULL,
             last_login INTEGER
         )
     ''')
+
+    # Existing installations gain phone support without changing username/password accounts.
+    try:
+        cursor.execute("SELECT phone FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE users ADD COLUMN phone TEXT")
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sms_login_codes (
+            phone TEXT PRIMARY KEY,
+            code_hash TEXT NOT NULL DEFAULT '',
+            out_id TEXT,
+            expires_at INTEGER NOT NULL,
+            last_sent_at INTEGER NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0
+        )
+    ''')
+    try:
+        cursor.execute("SELECT out_id FROM sms_login_codes LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE sms_login_codes ADD COLUMN out_id TEXT")
+    cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_unique ON users(phone)')
 
     # 如果表已存在但没有avatar_url字段，则添加avatar_url字段（用户自定义头像，NULL表示使用默认头像）
     try:
@@ -294,6 +326,14 @@ def username_exists(username):
     conn.close()
     return result is not None
 
+def generate_default_username(cursor):
+    """Generate a short, non-phone username for SMS-created accounts."""
+    while True:
+        username = f'user_{secrets.token_hex(4)}'
+        cursor.execute('SELECT 1 FROM users WHERE username = ?', (username,))
+        if not cursor.fetchone():
+            return username
+
 def authenticate_user(username, password):
     """验证用户身份"""
     conn = get_db()
@@ -325,6 +365,60 @@ def authenticate_user(username, password):
         'role': user['role'],
         'avatar_url': user['avatar_url']
     }, None
+
+def valid_phone(phone):
+    return bool(re.fullmatch(r'1[3-9]\d{9}', phone or ''))
+
+def send_aliyun_sms(phone):
+    if not all((SMS_ACCESS_KEY_ID, SMS_ACCESS_KEY_SECRET, SMS_SIGN_NAME, SMS_TEMPLATE_CODE)):
+        raise RuntimeError('短信认证尚未配置阿里云凭证及号码认证服务提供的签名和模板')
+    config = open_api_models.Config(
+        access_key_id=SMS_ACCESS_KEY_ID,
+        access_key_secret=SMS_ACCESS_KEY_SECRET
+    )
+    config.endpoint = 'dypnsapi.aliyuncs.com'
+    client = DypnsapiClient(config)
+    out_id = uuid.uuid4().hex
+    request = dypnsapi_models.SendSmsVerifyCodeRequest(
+        phone_number=phone,
+        sign_name=SMS_SIGN_NAME,
+        template_code=SMS_TEMPLATE_CODE,
+        template_param=json.dumps({'code': '##code##', 'min': '5'}),
+        country_code='86',
+        out_id=out_id,
+        code_length=6,
+        code_type=1,
+        valid_time=300,
+        interval=60,
+        return_verify_code=False
+    )
+    response = client.send_sms_verify_code_with_options(request, RuntimeOptions())
+    body = getattr(response, 'body', None)
+    if not body or getattr(body, 'code', None) != 'OK' or getattr(body, 'success', False) is False:
+        raise RuntimeError(getattr(body, 'message', None) or '阿里云短信发送失败')
+    return out_id
+
+def verify_aliyun_sms(phone, code, out_id):
+    if not all((SMS_ACCESS_KEY_ID, SMS_ACCESS_KEY_SECRET)):
+        raise RuntimeError('短信认证尚未配置阿里云访问凭证')
+    config = open_api_models.Config(
+        access_key_id=SMS_ACCESS_KEY_ID,
+        access_key_secret=SMS_ACCESS_KEY_SECRET
+    )
+    config.endpoint = 'dypnsapi.aliyuncs.com'
+    client = DypnsapiClient(config)
+    request = dypnsapi_models.CheckSmsVerifyCodeRequest(
+        phone_number=phone,
+        verify_code=code,
+        out_id=out_id,
+        country_code='86',
+        case_auth_policy=1
+    )
+    response = client.check_sms_verify_code_with_options(request, RuntimeOptions())
+    body = getattr(response, 'body', None)
+    model = getattr(body, 'model', None)
+    return bool(body and getattr(body, 'code', None) == 'OK' and
+                model and getattr(model, 'verify_result', None) == 'PASS')
 
 def allowed_file(filename):
     """检查图片文件扩展名是否允许"""
@@ -671,6 +765,117 @@ def login():
 
     return jsonify({'success': False, 'message': error}), 401
 
+@app.route('/api/login/send-code', methods=['POST'])
+def send_login_code():
+    data = request.get_json(silent=True) or {}
+    phone = (data.get('phone') or '').strip()
+    if not valid_phone(phone):
+        return jsonify({'success': False, 'message': '请输入有效的中国大陆手机号'}), 400
+
+    now = int(time.time())
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT status FROM users WHERE phone = ?', (phone,))
+    user = cursor.fetchone()
+    if user and user['status'] == 'disabled':
+        conn.close()
+        return jsonify({'success': False, 'message': '账号已被禁用'}), 403
+    cursor.execute('SELECT last_sent_at FROM sms_login_codes WHERE phone = ?', (phone,))
+    previous = cursor.fetchone()
+    if previous and now - previous['last_sent_at'] < 60:
+        conn.close()
+        return jsonify({'success': False, 'message': '验证码发送过于频繁，请稍后再试'}), 429
+
+    try:
+        out_id = send_aliyun_sms(phone)
+    except Exception as exc:
+        app.logger.warning('SMS send failed: %s', exc)
+        conn.close()
+        return jsonify({'success': False, 'message': str(exc) if isinstance(exc, RuntimeError) else '短信发送失败，请稍后重试'}), 503
+
+    cursor.execute('''
+        INSERT INTO sms_login_codes (phone, code_hash, out_id, expires_at, last_sent_at, attempts)
+        VALUES (?, '', ?, ?, ?, 0)
+        ON CONFLICT(phone) DO UPDATE SET code_hash='', out_id=excluded.out_id,
+            expires_at=excluded.expires_at, last_sent_at=excluded.last_sent_at, attempts=0
+    ''', (phone, out_id, now + 300, now))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': '验证码已发送，请注意查收'})
+
+@app.route('/api/login/sms', methods=['POST'])
+def login_by_sms():
+    data = request.get_json(silent=True) or {}
+    phone = (data.get('phone') or '').strip()
+    code = (data.get('code') or '').strip()
+    if not valid_phone(phone) or not re.fullmatch(r'\d{4,6}', code):
+        return jsonify({'success': False, 'message': '手机号或验证码格式不正确'}), 400
+
+    now = int(time.time())
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM sms_login_codes WHERE phone = ?', (phone,))
+    saved = cursor.fetchone()
+    if not saved or saved['expires_at'] < now or not saved['out_id'] or saved['attempts'] >= 5:
+        cursor.execute('DELETE FROM sms_login_codes WHERE phone = ?', (phone,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': False, 'message': '验证码无效或已过期，请重新获取'}), 401
+    try:
+        verified = verify_aliyun_sms(phone, code, saved['out_id'])
+    except Exception as exc:
+        if 'isv.ValidateFail' in str(exc):
+            cursor.execute('UPDATE sms_login_codes SET attempts = attempts + 1 WHERE phone = ?', (phone,))
+            conn.commit()
+            conn.close()
+            return jsonify({'success': False, 'message': '验证码错误、已过期或已被新验证码替代，请获取最新验证码'}), 401
+        app.logger.warning('SMS verification failed: %s', exc)
+        conn.close()
+        return jsonify({'success': False, 'message': '验证码核验服务暂不可用，请稍后重试'}), 503
+    if not verified:
+        cursor.execute('UPDATE sms_login_codes SET attempts = attempts + 1 WHERE phone = ?', (phone,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': False, 'message': '验证码错误或已失效'}), 401
+
+    cursor.execute('SELECT id, username, role, status, avatar_url FROM users WHERE phone = ?', (phone,))
+    user = cursor.fetchone()
+    if user and user['status'] == 'disabled':
+        conn.close()
+        return jsonify({'success': False, 'message': '账号已被禁用'}), 403
+    if not user:
+        username = generate_default_username(cursor)
+        password_hash = generate_password_hash(secrets.token_urlsafe(32))
+        cursor.execute('''
+            INSERT INTO users (username, password_hash, phone, role, status, created_at, last_login)
+            VALUES (?, ?, ?, 'user', 'active', ?, ?)
+        ''', (username, password_hash, phone, now * 1000, now * 1000))
+        user_id = cursor.lastrowid
+        cursor.execute('SELECT id, username, role, status, avatar_url FROM users WHERE id = ?', (user_id,))
+        user = cursor.fetchone()
+    else:
+        # Rename accounts created by the previous phone-derived username scheme.
+        if user['username'] == f'p{phone}':
+            username = generate_default_username(cursor)
+            cursor.execute('UPDATE users SET username = ? WHERE id = ?', (username, user['id']))
+        cursor.execute('UPDATE users SET last_login = ? WHERE id = ?', (now * 1000, user['id']))
+        cursor.execute('SELECT id, username, role, status, avatar_url FROM users WHERE id = ?', (user['id'],))
+        user = cursor.fetchone()
+    cursor.execute('DELETE FROM sms_login_codes WHERE phone = ?', (phone,))
+    conn.commit()
+    conn.close()
+
+    session.clear()
+    session['user_id'] = user['id']
+    session['username'] = user['username']
+    session['role'] = user['role']
+    session['avatar_url'] = user['avatar_url']
+    session.permanent = True
+    return jsonify({'success': True, 'message': '登录成功', 'user': {
+        'id': user['id'], 'username': user['username'], 'role': user['role'],
+        'avatar_url': get_avatar_url(user['avatar_url'])
+    }})
+
 # API：检查登录状态
 @app.route('/api/check_login', methods=['GET'])
 def check_login():
@@ -692,6 +897,137 @@ def check_login():
 def logout():
     session.clear()
     return jsonify({'success': True, 'message': '已退出登录'})
+
+# API：更改当前用户的用户名
+@app.route('/api/user/username', methods=['POST'])
+@login_required
+def update_username():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    valid, message = validate_username(username)
+    if not valid:
+        return jsonify({'success': False, 'message': message}), 400
+
+    user_id = session['user_id']
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT phone FROM users WHERE id = ?', (user_id,))
+    current = cursor.fetchone()
+    if not current:
+        conn.close()
+        session.clear()
+        return jsonify({'success': False, 'message': '用户不存在，请重新登录'}), 401
+    if current['phone'] and current['phone'] in username:
+        conn.close()
+        return jsonify({'success': False, 'message': '用户名不能包含绑定的手机号'}), 400
+
+    cursor.execute('SELECT 1 FROM users WHERE username = ? AND id != ?', (username, user_id))
+    if cursor.fetchone():
+        conn.close()
+        return jsonify({'success': False, 'message': '用户名已被使用'}), 409
+
+    cursor.execute('UPDATE users SET username = ? WHERE id = ?', (username, user_id))
+    conn.commit()
+    conn.close()
+    session['username'] = username
+    return jsonify({'success': True, 'message': '用户名已更新', 'username': username})
+
+# API：注销当前普通用户账号并清理关联数据
+@app.route('/api/user/account', methods=['DELETE'])
+@login_required
+def delete_account():
+    data = request.get_json(silent=True) or {}
+    if data.get('confirmation') != '注销':
+        return jsonify({'success': False, 'message': '请确认注销操作'}), 400
+
+    user_id = session['user_id']
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT role, phone, avatar_url FROM users WHERE id = ?', (user_id,))
+    user = cursor.fetchone()
+    if not user:
+        conn.close()
+        session.clear()
+        return jsonify({'success': False, 'message': '账号不存在'}), 404
+    if user['role'] == 'admin':
+        conn.close()
+        return jsonify({'success': False, 'message': '管理员账号不能通过此入口注销'}), 403
+
+    cursor.execute('SELECT images, videos FROM posts WHERE user_id = ?', (user_id,))
+    media_urls = set()
+    for post in cursor.fetchall():
+        for field in ('images', 'videos'):
+            try:
+                values = json.loads(post[field]) if post[field] else []
+            except (TypeError, json.JSONDecodeError):
+                values = []
+            if isinstance(values, list):
+                media_urls.update(url for url in values if isinstance(url, str))
+    if user['avatar_url']:
+        media_urls.add(user['avatar_url'])
+    cursor.execute('SELECT media_url FROM messages WHERE from_user_id = ? OR to_user_id = ?', (user_id, user_id))
+    media_urls.update(row['media_url'] for row in cursor.fetchall() if row['media_url'])
+
+    try:
+        # Delete notifications referring to this user, their posts, or their comment threads.
+        cursor.execute('''
+            WITH RECURSIVE comment_tree(id) AS (
+                SELECT id FROM comments WHERE user_id = ?
+                UNION
+                SELECT id FROM comments WHERE post_id IN (SELECT id FROM posts WHERE user_id = ?)
+                UNION
+                SELECT c.id FROM comments c JOIN comment_tree t ON c.parent_id = t.id
+            )
+            DELETE FROM notifications
+            WHERE user_id = ? OR from_user_id = ?
+               OR post_id IN (SELECT id FROM posts WHERE user_id = ?)
+               OR comment_id IN (SELECT id FROM comment_tree)
+        ''', (user_id, user_id, user_id, user_id, user_id))
+        cursor.execute('DELETE FROM messages WHERE from_user_id = ? OR to_user_id = ?', (user_id, user_id))
+        cursor.execute('''
+            WITH RECURSIVE comment_tree(id) AS (
+                SELECT id FROM comments WHERE user_id = ?
+                UNION
+                SELECT id FROM comments WHERE post_id IN (SELECT id FROM posts WHERE user_id = ?)
+                UNION
+                SELECT c.id FROM comments c JOIN comment_tree t ON c.parent_id = t.id
+            )
+            DELETE FROM comments WHERE id IN (SELECT id FROM comment_tree)
+        ''', (user_id, user_id))
+        cursor.execute('DELETE FROM posts WHERE user_id = ?', (user_id,))
+        cursor.execute('DELETE FROM visits WHERE user_id = ?', (user_id,))
+        if user['phone']:
+            cursor.execute('DELETE FROM sms_login_codes WHERE phone = ?', (user['phone'],))
+        cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+
+        # Keep media still referenced by another user's profile or post.
+        cursor.execute('SELECT avatar_url FROM users WHERE avatar_url IS NOT NULL')
+        still_referenced = {row['avatar_url'] for row in cursor.fetchall()}
+        cursor.execute('SELECT images, videos FROM posts')
+        for post in cursor.fetchall():
+            for field in ('images', 'videos'):
+                try:
+                    values = json.loads(post[field]) if post[field] else []
+                except (TypeError, json.JSONDecodeError):
+                    values = []
+                if isinstance(values, list):
+                    still_referenced.update(url for url in values if isinstance(url, str))
+        cursor.execute('SELECT media_url FROM messages WHERE media_url IS NOT NULL')
+        still_referenced.update(row['media_url'] for row in cursor.fetchall())
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        app.logger.exception('Account deletion failed for user_id=%s', user_id)
+        return jsonify({'success': False, 'message': '注销失败，请稍后重试'}), 500
+    conn.close()
+
+    for url in media_urls - still_referenced:
+        if url != DEFAULT_AVATAR_URL and OSS_PUBLIC_URL and url.startswith(OSS_PUBLIC_URL + '/'):
+            delete_media(url)
+
+    session.clear()
+    return jsonify({'success': True, 'message': '账号已注销'})
 
 # API：设置/更新头像（前端先通过 /api/presign type=avatar 直传OSS的Avatar/目录，再调用此接口保存URL）
 @app.route('/api/user/avatar', methods=['POST'])
