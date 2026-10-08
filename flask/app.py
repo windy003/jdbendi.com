@@ -1332,27 +1332,25 @@ def presign_upload():
     except Exception as e:
         return jsonify({'success': False, 'message': f'生成上传链接失败: {str(e)}'}), 500
 
-# API：直传 OSS 后，服务端补写正确的 Content-Type
-# 直传时故意不签名 Content-Type（避免浏览器 OPTIONS 预检失败），导致视频对象
-# 在 OSS 上被存成 application/octet-stream，浏览器 <video> 标签因此拒绝解码/渲染缩略图。
-# 服务端调用 OSS 无跨域限制，用这一步把类型改回正确的 video/*。
+# API：直传 OSS 后，服务端补写正确的 Content-Type，避免对象以
+# application/octet-stream 返回时被浏览器当作附件下载。
 @app.route('/api/fix_content_type', methods=['POST'])
 @login_required
 def fix_content_type():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     key = data.get('key', '')
 
-    if not re.match(r'^[0-9a-f]{32}\.[A-Za-z0-9]+$', key):
+    if not isinstance(key, str) or not re.match(r'^(?:Avatar/)?[0-9a-f]{32}\.[A-Za-z0-9]+$', key):
         return jsonify({'success': False, 'message': '无效的文件标识'}), 400
 
     ext = key.rsplit('.', 1)[1].lower()
-    if ext not in ALLOWED_VIDEO_EXTENSIONS:
+    if ext not in ALLOWED_ALL_MEDIA:
         return jsonify({'success': False, 'message': '不支持的文件类型'}), 400
 
     content_type = get_content_type(ext)
     try:
         bucket = get_oss_bucket()
-        bucket.update_object_meta(key, headers={'Content-Type': content_type})
+        bucket.update_object_meta(key, headers={'Content-Type': content_type, 'Content-Disposition': 'inline'})
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': f'更新失败: {str(e)}'}), 500

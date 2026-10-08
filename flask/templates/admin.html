@@ -573,7 +573,7 @@
             cursor: pointer;
         }
 
-        /* 帖子里的视频缩略图（大小与图片缩略图一致，点击后新标签全屏播放） */
+        /* 帖子里的视频缩略图（大小与图片缩略图一致，点击后弹层播放） */
         .post-videos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0; }
         .post-videos-grid .video-thumb { position: relative; height: 80px; border-radius: 6px; overflow: hidden; cursor: pointer; background: #000; }
         .post-videos-grid .video-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
@@ -723,6 +723,28 @@
 
         function getMediaUrl(u) {
             return u || '';
+        }
+
+        async function prepareMediaForPreview(src) {
+            const mediaUrl = new URL(src, window.location.href);
+            const key = decodeURIComponent(mediaUrl.pathname.replace(/^\//, ''));
+            const res = await fetch('/api/fix_content_type', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ key })
+            });
+            const result = await res.json();
+            if (!res.ok || !result.success) throw new Error(result.message || '媒体无法预览');
+            return src;
+        }
+        async function previewPostImage(src) {
+            try { openAvatarLightbox(await prepareMediaForPreview(src)); }
+            catch (error) { alert(error.message || '图片无法预览'); }
+        }
+        async function previewPostVideo(src) {
+            try { playVideoPreview(await prepareMediaForPreview(src)); }
+            catch (error) { alert(error.message || '视频无法播放'); }
         }
 
         // 头像放大灯箱
@@ -883,18 +905,15 @@
                 xhr.send(buffer);
             });
 
-            // 直传时没有签名 Content-Type，视频会被 OSS 存成 application/octet-stream
-            // 导致浏览器 <video> 无法解码出缩略图，这里补一次请求把类型改回 video/*
-            if (presign.is_video) {
-                try {
-                    await fetch('/api/fix_content_type', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'same-origin',
-                        body: JSON.stringify({ key: presign.key })
-                    });
-                } catch (_) {}
-            }
+            // 直传不会带 Content-Type；上传后由服务器设置正确媒体类型和 inline 展示方式。
+            const fixRes = await fetch('/api/fix_content_type', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ key: presign.key })
+            });
+            const fixResult = await fixRes.json();
+            if (!fixRes.ok || !fixResult.success) throw new Error(fixResult.message || '媒体类型设置失败');
 
             return presign.public_url;
         }
@@ -1261,12 +1280,12 @@
                         ${post.price ? `<div class="post-price">💰 ${escapeHtml(post.price)}</div>` : ''}
                         ${post.images && post.images.length > 0 ? `
                             <div class="post-images">
-                                ${post.images.map(img => `<img src="${getMediaUrl(img)}" alt="图片" onclick="window.open('${getMediaUrl(img)}')">`).join('')}
+                                ${post.images.map(img => `<img src="${getMediaUrl(img)}" alt="图片" onclick="previewPostImage('${getMediaUrl(img)}')">`).join('')}
                             </div>
                         ` : ''}
                         ${post.videos && post.videos.length > 0 ? `
                             <div class="post-videos-grid">
-                                ${post.videos.map(v => `<div class="video-thumb" onclick="window.open('${getMediaUrl(v)}')"><video src="${getMediaUrl(v)}" preload="metadata" muted playsinline onloadedmetadata="this.currentTime=Math.min(1,(this.duration||1)/2)"></video><span class="video-play-icon">▶</span></div>`).join('')}
+                                ${post.videos.map(v => `<div class="video-thumb" onclick="previewPostVideo('${getMediaUrl(v)}')"><video src="${getMediaUrl(v)}" preload="metadata" muted playsinline onloadedmetadata="this.currentTime=Math.min(1,(this.duration||1)/2)"></video><span class="video-play-icon">▶</span></div>`).join('')}
                             </div>
                         ` : ''}
                         <div class="post-footer">
