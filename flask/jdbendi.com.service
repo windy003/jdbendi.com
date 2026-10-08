@@ -1,0 +1,17 @@
+
+# /etc/systemd/system/jdbendi.com.service
+
+
+[Unit]
+Description=JDBendi Flask Website
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root/jdbendi.com/flask
+ExecStart=/root/jdbendi.com/flask/.venv/bin/python /root/jdbendi.com/flask/app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
