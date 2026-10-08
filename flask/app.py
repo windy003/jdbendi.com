@@ -464,13 +464,32 @@ def delete_from_oss(key):
 
 def delete_media(url):
     """从 OSS 删除媒体文件（通过 URL 提取 key，保留目录前缀如 Avatar/xxx.png）"""
-    if not url or not url.startswith('http'):
+    # Only delete objects addressed by our own public OSS URL. Falling back to
+    # the last URL segment can accidentally delete an unrelated object.
+    if not url or not OSS_PUBLIC_URL or not url.startswith(OSS_PUBLIC_URL.rstrip('/') + '/'):
         return
-    if OSS_PUBLIC_URL and url.startswith(OSS_PUBLIC_URL + '/'):
-        key = url[len(OSS_PUBLIC_URL) + 1:].split('?')[0]
-    else:
-        key = url.split('/')[-1].split('?')[0]
-    delete_from_oss(key)
+    key = url[len(OSS_PUBLIC_URL.rstrip('/')) + 1:].split('?', 1)[0]
+    if key:
+        delete_from_oss(key)
+
+
+def get_referenced_media(cursor):
+    """Return media URLs that are still referenced by database records."""
+    referenced = set()
+    cursor.execute('SELECT avatar_url FROM users WHERE avatar_url IS NOT NULL')
+    referenced.update(row['avatar_url'] for row in cursor.fetchall())
+    cursor.execute('SELECT images, videos FROM posts')
+    for post in cursor.fetchall():
+        for field in ('images', 'videos'):
+            try:
+                values = json.loads(post[field]) if post[field] else []
+            except (TypeError, json.JSONDecodeError):
+                values = []
+            if isinstance(values, list):
+                referenced.update(url for url in values if isinstance(url, str))
+    cursor.execute('SELECT media_url FROM messages WHERE media_url IS NOT NULL')
+    referenced.update(row['media_url'] for row in cursor.fetchall())
+    return referenced
 
 def setup_oss_cors():
     """启动时自动为 OSS 存储桶配置 CORS，允许网站直传"""
@@ -1000,20 +1019,8 @@ def delete_account():
             cursor.execute('DELETE FROM sms_login_codes WHERE phone = ?', (user['phone'],))
         cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
 
-        # Keep media still referenced by another user's profile or post.
-        cursor.execute('SELECT avatar_url FROM users WHERE avatar_url IS NOT NULL')
-        still_referenced = {row['avatar_url'] for row in cursor.fetchall()}
-        cursor.execute('SELECT images, videos FROM posts')
-        for post in cursor.fetchall():
-            for field in ('images', 'videos'):
-                try:
-                    values = json.loads(post[field]) if post[field] else []
-                except (TypeError, json.JSONDecodeError):
-                    values = []
-                if isinstance(values, list):
-                    still_referenced.update(url for url in values if isinstance(url, str))
-        cursor.execute('SELECT media_url FROM messages WHERE media_url IS NOT NULL')
-        still_referenced.update(row['media_url'] for row in cursor.fetchall())
+        # Keep media still referenced by another profile, post, or message.
+        still_referenced = get_referenced_media(cursor)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1256,21 +1263,27 @@ def delete_post(post_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    # 先获取标题、图片和视频列表，删除媒体文件
+    # Save media URLs before deleting the row; remove only files no longer used.
     cursor.execute('SELECT title, images, videos FROM posts WHERE id = ?', (post_id,))
     row = cursor.fetchone()
+    media_urls = set()
     if row:
-        if row['images']:
-            for media in json.loads(row['images']):
-                delete_media(media)
-        if row['videos']:
-            for media in json.loads(row['videos']):
-                delete_media(media)
+        for field in ('images', 'videos'):
+            try:
+                values = json.loads(row[field]) if row[field] else []
+            except (TypeError, json.JSONDecodeError):
+                values = []
+            if isinstance(values, list):
+                media_urls.update(url for url in values if isinstance(url, str))
 
     # 删除数据库记录
     cursor.execute('DELETE FROM posts WHERE id = ?', (post_id,))
     conn.commit()
+    still_referenced = get_referenced_media(cursor)
     conn.close()
+
+    for media_url in media_urls - still_referenced:
+        delete_media(media_url)
 
     if row:
         notify_admin(
