@@ -565,10 +565,22 @@ def post_owner_or_admin(f):
 BOT_UA_PATTERN = re.compile(r'bot|spider|crawl|curl|wget|python-requests|headless', re.I)
 
 def get_client_ip():
-    """获取真实访客 IP：网站经 Cloudflare 代理，request.remote_addr 拿到的是 CF 节点 IP"""
-    return (request.headers.get('CF-Connecting-IP')
-            or request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
-            or request.remote_addr)
+    """获取真实访客 IP：网站经 Caddy 反向代理，request.remote_addr 拿到的是本机代理地址。
+
+    只信任 Caddy 写入的 X-Forwarded-For —— 它会忽略客户端自带的同名头并覆盖为真实客户端 IP。
+    不要再读 CF-Connecting-IP：站点已不走 Cloudflare，该头没人清理，客户端可随意伪造，
+    放在第一位会让任何人往访客表里灌假 IP，污染独立访客统计。
+    """
+    xff = request.headers.get('X-Forwarded-For', '')
+    ip = xff.split(',')[0].strip() if xff else ''
+    if not ip:
+        ip = (request.remote_addr or '').strip()
+    # 校验合法性，非法内容直接丢弃，避免垃圾数据进入统计
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return ''
+    return ip
 
 @app.before_request
 def track_visit():
