@@ -77,6 +77,7 @@ MAX_VIDEOS = 3  # 每条信息最多上传3个视频
 # 头像配置：用户自定义头像统一存放在 OSS 的 Avatar/ 目录下；未自定义时使用默认头像
 AVATAR_OSS_FOLDER = 'Avatar'
 DEFAULT_AVATAR_URL = 'https://jdbendi.oss-cn-hangzhou.aliyuncs.com/Avatar/default_avatar.svg'
+MAX_BIO_LENGTH = 60  # 一句话介绍最多60个字符
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 限制500MB（支持视频）
 
 # 阿里云 OSS 配置
@@ -201,6 +202,12 @@ def init_db():
         cursor.execute("SELECT avatar_url FROM users LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE users ADD COLUMN avatar_url TEXT")
+
+    # 如果表已存在但没有bio字段，则添加bio字段（一句话介绍自己，NULL表示未填写）
+    try:
+        cursor.execute("SELECT bio FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE users ADD COLUMN bio TEXT")
 
     # 创建评论表
     cursor.execute('''
@@ -338,7 +345,7 @@ def authenticate_user(username, password):
     """验证用户身份"""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, password_hash, role, status, avatar_url FROM users WHERE username = ?', (username,))
+    cursor.execute('SELECT id, password_hash, role, status, avatar_url, bio FROM users WHERE username = ?', (username,))
     user = cursor.fetchone()
 
     if not user:
@@ -363,7 +370,8 @@ def authenticate_user(username, password):
         'id': user['id'],
         'username': username,
         'role': user['role'],
-        'avatar_url': user['avatar_url']
+        'avatar_url': user['avatar_url'],
+        'bio': user['bio'] or ''
     }, None
 
 def valid_phone(phone):
@@ -793,6 +801,7 @@ def login():
         session['username'] = user['username']
         session['role'] = user['role']
         session['avatar_url'] = user['avatar_url']
+        session['bio'] = user['bio']
         session.permanent = True
         return jsonify({
             'success': True,
@@ -801,7 +810,8 @@ def login():
                 'id': user['id'],
                 'username': user['username'],
                 'role': user['role'],
-                'avatar_url': get_avatar_url(user['avatar_url'])
+                'avatar_url': get_avatar_url(user['avatar_url']),
+                'bio': user['bio'] or ''
             }
         })
 
@@ -880,7 +890,7 @@ def login_by_sms():
         conn.close()
         return jsonify({'success': False, 'message': '验证码错误或已失效'}), 401
 
-    cursor.execute('SELECT id, username, role, status, avatar_url FROM users WHERE phone = ?', (phone,))
+    cursor.execute('SELECT id, username, role, status, avatar_url, bio FROM users WHERE phone = ?', (phone,))
     user = cursor.fetchone()
     if user and user['status'] == 'disabled':
         conn.close()
@@ -893,7 +903,7 @@ def login_by_sms():
             VALUES (?, ?, ?, 'user', 'active', ?, ?)
         ''', (username, password_hash, phone, now * 1000, now * 1000))
         user_id = cursor.lastrowid
-        cursor.execute('SELECT id, username, role, status, avatar_url FROM users WHERE id = ?', (user_id,))
+        cursor.execute('SELECT id, username, role, status, avatar_url, bio FROM users WHERE id = ?', (user_id,))
         user = cursor.fetchone()
     else:
         # Rename accounts created by the previous phone-derived username scheme.
@@ -901,7 +911,7 @@ def login_by_sms():
             username = generate_default_username(cursor)
             cursor.execute('UPDATE users SET username = ? WHERE id = ?', (username, user['id']))
         cursor.execute('UPDATE users SET last_login = ? WHERE id = ?', (now * 1000, user['id']))
-        cursor.execute('SELECT id, username, role, status, avatar_url FROM users WHERE id = ?', (user['id'],))
+        cursor.execute('SELECT id, username, role, status, avatar_url, bio FROM users WHERE id = ?', (user['id'],))
         user = cursor.fetchone()
     cursor.execute('DELETE FROM sms_login_codes WHERE phone = ?', (phone,))
     conn.commit()
@@ -912,10 +922,11 @@ def login_by_sms():
     session['username'] = user['username']
     session['role'] = user['role']
     session['avatar_url'] = user['avatar_url']
+    session['bio'] = user['bio']
     session.permanent = True
     return jsonify({'success': True, 'message': '登录成功', 'user': {
         'id': user['id'], 'username': user['username'], 'role': user['role'],
-        'avatar_url': get_avatar_url(user['avatar_url'])
+        'avatar_url': get_avatar_url(user['avatar_url']), 'bio': user['bio'] or ''
     }})
 
 # API：检查登录状态
@@ -929,7 +940,8 @@ def check_login():
                 'id': session.get('user_id'),
                 'username': session.get('username'),
                 'role': session.get('role'),
-                'avatar_url': get_avatar_url(session.get('avatar_url'))
+                'avatar_url': get_avatar_url(session.get('avatar_url')),
+                'bio': session.get('bio') or ''
             }
         })
     return jsonify({'success': True, 'logged_in': False})
@@ -973,6 +985,31 @@ def update_username():
     conn.close()
     session['username'] = username
     return jsonify({'success': True, 'message': '用户名已更新', 'username': username})
+
+# API：设置当前用户的一句话介绍
+@app.route('/api/user/bio', methods=['POST'])
+@login_required
+def update_bio():
+    data = request.get_json(silent=True) or {}
+    bio = ' '.join(str(data.get('bio') or '').split())
+    if len(bio) > MAX_BIO_LENGTH:
+        return jsonify({'success': False, 'message': f'一句话介绍不能超过{MAX_BIO_LENGTH}个字符'}), 400
+
+    user_id = session['user_id']
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT 1 FROM users WHERE id = ?', (user_id,))
+    if not cursor.fetchone():
+        conn.close()
+        session.clear()
+        return jsonify({'success': False, 'message': '用户不存在，请重新登录'}), 401
+
+    cursor.execute('UPDATE users SET bio = ? WHERE id = ?', (bio or None, user_id))
+    conn.commit()
+    conn.close()
+
+    session['bio'] = bio
+    return jsonify({'success': True, 'message': '一句话介绍已更新', 'bio': bio})
 
 # API：注销当前普通用户账号并清理关联数据
 @app.route('/api/user/account', methods=['DELETE'])
@@ -1919,7 +1956,7 @@ def get_user_profile(username):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, username, role, status, created_at, avatar_url
+        SELECT id, username, role, status, created_at, avatar_url, bio
         FROM users WHERE username = ? AND status = 'active'
     ''', (username,))
     row = cursor.fetchone()
@@ -1941,7 +1978,8 @@ def get_user_profile(username):
         'role': row['role'],
         'created_at': row['created_at'],
         'posts_count': posts_count,
-        'avatar_url': get_avatar_url(row['avatar_url'])
+        'avatar_url': get_avatar_url(row['avatar_url']),
+        'bio': row['bio'] or ''
     }
 
     # 获取该用户的帖子（非本人只展示公开的帖子）

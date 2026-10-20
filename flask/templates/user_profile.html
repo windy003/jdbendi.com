@@ -48,6 +48,11 @@
             border-radius: 50%; cursor: pointer;
         }
         .profile-username { font-size: 22px; font-weight: 700; color: #333; margin-bottom: 6px; }
+        .profile-bio {
+            font-size: 14px; color: #666; line-height: 1.6;
+            margin: 0 auto 10px; max-width: 480px; padding: 0 10px;
+            word-break: break-word; white-space: pre-wrap;
+        }
         .profile-badge {
             display: inline-block; padding: 3px 10px; border-radius: 10px;
             font-size: 12px; font-weight: 600; color: white;
@@ -239,6 +244,7 @@
             <div class="profile-card">
                 <img class="avatar" src="${getMediaUrl(u.avatar_url)}" alt="头像" onclick="openAvatarLightbox(this.src)">
                 <div class="profile-username">${escapeHtml(u.username)}</div>
+                ${u.bio ? `<div class="profile-bio">${escapeHtml(u.bio)}</div>` : ''}
                 ${u.role === 'admin' ? '<span class="profile-badge">管理员</span>' : ''}
                 <div class="profile-stats">
                     <div class="stat-item">

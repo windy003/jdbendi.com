@@ -543,6 +543,16 @@
                 <button type="submit" class="btn" id="saveUsernameBtn">保存用户名</button>
                 <div class="profile-message" id="usernameMessage" role="status"></div>
             </form>
+
+            <form id="bioForm" style="margin-top: 22px; padding-top: 18px; border-top: 1px solid #eee;">
+                <div class="form-group">
+                    <label for="bioInput">一句话介绍自己</label>
+                    <input type="text" id="bioInput" maxlength="60" placeholder="用一句话介绍自己（选填）" autocomplete="off">
+                    <div class="profile-hint">最多60个字符，会显示在你的个人主页上。</div>
+                </div>
+                <button type="submit" class="btn" id="saveBioBtn">保存介绍</button>
+                <div class="profile-message" id="bioMessage" role="status"></div>
+            </form>
         </div>
 
         <!-- 通知中心 -->
@@ -756,6 +766,7 @@
                 }
                 document.getElementById('userInfo').textContent = `欢迎，${currentUser.username}`;
                 document.getElementById('usernameInput').value = currentUser.username;
+                document.getElementById('bioInput').value = currentUser.bio || '';
                 document.getElementById('avatarPreview').src = getMediaUrl(currentUser.avatar_url);
 
                 // 立即显示空占位，避免"加载中"长时间展示
@@ -795,6 +806,35 @@
                 if (!result.success) throw new Error(result.message || '用户名更新失败');
                 currentUser.username = result.username;
                 document.getElementById('userInfo').textContent = `欢迎，${result.username}`;
+                message.textContent = result.message;
+                message.classList.add('success');
+            } catch (error) {
+                message.textContent = error.message || '网络错误，请稍后重试';
+                message.classList.add('error');
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        document.getElementById('bioForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const input = document.getElementById('bioInput');
+            const button = document.getElementById('saveBioBtn');
+            const message = document.getElementById('bioMessage');
+            const bio = input.value.trim();
+            message.textContent = '';
+            message.className = 'profile-message';
+            button.disabled = true;
+            try {
+                const response = await fetch('/api/user/bio', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bio })
+                });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message || '一句话介绍更新失败');
+                currentUser.bio = result.bio;
+                input.value = result.bio;
                 message.textContent = result.message;
                 message.classList.add('success');
             } catch (error) {

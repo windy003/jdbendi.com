@@ -637,6 +637,19 @@
                 </div>
             </div>
 
+            <!-- 一句话介绍 -->
+            <div class="publish-section">
+                <h2 style="margin-bottom: 15px; color: #333; font-size: 18px;">一句话介绍自己</h2>
+                <form id="bioForm">
+                    <div class="form-group">
+                        <input type="text" id="bioInput" maxlength="60" placeholder="用一句话介绍自己（选填）" autocomplete="off">
+                        <div class="config-hint" style="margin-top: 6px;">最多60个字符，会显示在你的个人主页上。</div>
+                    </div>
+                    <button type="submit" class="btn" id="saveBioBtn">保存介绍</button>
+                    <div id="bioMessage" style="margin-top: 10px; font-size: 14px;"></div>
+                </form>
+            </div>
+
             <div class="contact-config">
                 <p><strong>修改站长联系方式：</strong>在 <code>app.py</code> 第 17 行修改 <code>ADMIN_CONTACT</code> 变量</p>
             </div>
@@ -1180,6 +1193,36 @@
             }
         });
 
+        // 保存一句话介绍
+        document.getElementById('bioForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const input = document.getElementById('bioInput');
+            const button = document.getElementById('saveBioBtn');
+            const message = document.getElementById('bioMessage');
+            const bio = input.value.trim();
+            message.textContent = '';
+            message.style.color = '';
+            button.disabled = true;
+            try {
+                const response = await fetch('/api/user/bio', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bio })
+                });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message || '一句话介绍更新失败');
+                if (currentUser) currentUser.bio = result.bio;
+                input.value = result.bio;
+                message.textContent = result.message;
+                message.style.color = '#2e7d32';
+            } catch (error) {
+                message.textContent = error.message || '网络错误，请稍后重试';
+                message.style.color = '#c62828';
+            } finally {
+                button.disabled = false;
+            }
+        });
+
         // 详细内容全屏编辑
         function toggleContentFullscreen() {
             const textarea = document.getElementById('content');
@@ -1222,7 +1265,10 @@
             document.getElementById('loginPage').style.display = 'none';
             document.getElementById('adminPage').classList.add('show');
             document.body.style.display = 'block';
-            if (currentUser) document.getElementById('avatarPreview').src = getMediaUrl(currentUser.avatar_url);
+            if (currentUser) {
+                document.getElementById('avatarPreview').src = getMediaUrl(currentUser.avatar_url);
+                document.getElementById('bioInput').value = currentUser.bio || '';
+            }
             loadPosts();
         }
 
