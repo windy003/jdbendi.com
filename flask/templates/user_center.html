@@ -471,20 +471,6 @@
         }
         .delete-account-btn:disabled { opacity: 0.6; cursor: wait; }
 
-        /* 头像放大灯箱 */
-        #avatarLightbox {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.92); z-index: 9999;
-            align-items: center; justify-content: center;
-        }
-        #avatarLightbox.active { display: flex; }
-        #avatarLightbox img { max-width: 85%; max-height: 80vh; object-fit: contain; border-radius: 8px; }
-        #avatarLightboxClose {
-            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.2);
-            border: none; color: white; font-size: 22px; width: 42px; height: 42px;
-            border-radius: 50%; cursor: pointer;
-        }
-
         /* 视频预览灯箱（发布前点击视频缩略图播放） */
         #videoLightbox {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -537,7 +523,7 @@
 
         <!-- 头像设置 -->
         <div class="avatar-section">
-            <img class="avatar-preview" id="avatarPreview" src="https://jdbendi.oss-cn-hangzhou.aliyuncs.com/Avatar/default_avatar.svg" alt="头像" onclick="openAvatarLightbox(this.src)">
+            <img class="avatar-preview" id="avatarPreview" src="https://jdbendi.oss-cn-hangzhou.aliyuncs.com/Avatar/default_avatar.svg" alt="头像" onclick="goToUserProfile(currentUser && currentUser.username)">
             <div class="avatar-actions">
                 <input type="file" id="avatarInput" accept="image/*" style="display:none;">
                 <button type="button" class="avatar-btn avatar-btn-change" id="avatarChangeBtn" onclick="document.getElementById('avatarInput').click()">更换头像</button>
@@ -637,12 +623,6 @@
         </div>
     </div>
 
-    <!-- 头像放大灯箱 -->
-    <div id="avatarLightbox">
-        <button id="avatarLightboxClose" onclick="closeAvatarLightbox()">✕</button>
-        <img id="avatarLightboxImg" alt="头像">
-    </div>
-
     <!-- 视频预览灯箱 -->
     <div id="videoLightbox">
         <button id="videoLightboxClose" onclick="closeVideoLightbox()">✕</button>
@@ -669,35 +649,11 @@
             return u || '';
         }
 
-        // 头像放大灯箱
-        let avatarLbHistoryPushed = false;
-        function openAvatarLightbox(src) {
-            if (!src) return;
-            document.getElementById('avatarLightboxImg').src = src;
-            document.getElementById('avatarLightbox').classList.add('active');
-            avatarLbHistoryPushed = true;
-            history.pushState({ avatarLightbox: true }, '');
+        // 点击头像进入个人主页
+        function goToUserProfile(username) {
+            if (!username) return;
+            location.href = '/user/' + encodeURIComponent(username);
         }
-        function closeAvatarLightbox() {
-            if (avatarLbHistoryPushed) {
-                avatarLbHistoryPushed = false;
-                history.back();
-            } else {
-                hideAvatarLightbox();
-            }
-        }
-        function hideAvatarLightbox() {
-            document.getElementById('avatarLightbox').classList.remove('active');
-        }
-        window.addEventListener('popstate', () => {
-            if (document.getElementById('avatarLightbox').classList.contains('active')) {
-                avatarLbHistoryPushed = false;
-                hideAvatarLightbox();
-            }
-        });
-        document.getElementById('avatarLightbox').addEventListener('click', e => {
-            if (e.target.id === 'avatarLightbox') closeAvatarLightbox();
-        });
 
         // 视频预览灯箱（发布前点击视频缩略图播放）
         let videoLbHistoryPushed = false;

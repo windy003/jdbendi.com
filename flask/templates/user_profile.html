@@ -31,6 +31,21 @@
             object-fit: cover;
             margin: 0 auto 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            cursor: pointer;
+        }
+
+        /* 头像放大灯箱（仅个人主页支持点击头像全屏查看） */
+        #avatarLightbox {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 9999;
+            align-items: center; justify-content: center;
+        }
+        #avatarLightbox.active { display: flex; }
+        #avatarLightbox img { max-width: 85%; max-height: 80vh; object-fit: contain; border-radius: 8px; }
+        #avatarLightboxClose {
+            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.2);
+            border: none; color: white; font-size: 22px; width: 42px; height: 42px;
+            border-radius: 50%; cursor: pointer;
         }
         .profile-username { font-size: 22px; font-weight: 700; color: #333; margin-bottom: 6px; }
         .profile-badge {
@@ -109,6 +124,12 @@
         </div>
     </div>
 
+    <!-- 头像放大灯箱 -->
+    <div id="avatarLightbox">
+        <button id="avatarLightboxClose" onclick="closeAvatarLightbox()">✕</button>
+        <img id="avatarLightboxImg" alt="头像">
+    </div>
+
     <script>
         const TARGET_USERNAME = {{ username | tojson }};
         let currentUser = null;
@@ -129,6 +150,38 @@
         function getMediaUrl(u) {
             return u || '';
         }
+
+        // 头像放大灯箱（仅个人主页支持点击头像全屏查看）
+        let avatarLbHistoryPushed = false;
+        function openAvatarLightbox(src) {
+            if (!src) return;
+            document.getElementById('avatarLightboxImg').src = src;
+            document.getElementById('avatarLightbox').classList.add('active');
+            document.body.style.overflow = 'hidden';
+            avatarLbHistoryPushed = true;
+            history.pushState({ avatarLightbox: true }, '');
+        }
+        function closeAvatarLightbox() {
+            if (avatarLbHistoryPushed) {
+                avatarLbHistoryPushed = false;
+                history.back();
+            } else {
+                hideAvatarLightbox();
+            }
+        }
+        function hideAvatarLightbox() {
+            document.getElementById('avatarLightbox').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+        window.addEventListener('popstate', () => {
+            if (document.getElementById('avatarLightbox').classList.contains('active')) {
+                avatarLbHistoryPushed = false;
+                hideAvatarLightbox();
+            }
+        });
+        document.getElementById('avatarLightbox').addEventListener('click', e => {
+            if (e.target.id === 'avatarLightbox') closeAvatarLightbox();
+        });
         // 有修改时间则显示"修改时间"，否则显示"发布时间"
         function postTimeLabel(post) {
             return post.updated_at
@@ -184,7 +237,7 @@
 
             document.getElementById('profileContainer').innerHTML = `
             <div class="profile-card">
-                <img class="avatar" src="${getMediaUrl(u.avatar_url)}" alt="头像">
+                <img class="avatar" src="${getMediaUrl(u.avatar_url)}" alt="头像" onclick="openAvatarLightbox(this.src)">
                 <div class="profile-username">${escapeHtml(u.username)}</div>
                 ${u.role === 'admin' ? '<span class="profile-badge">管理员</span>' : ''}
                 <div class="profile-stats">

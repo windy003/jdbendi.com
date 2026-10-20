@@ -629,7 +629,7 @@
 
             <!-- 头像设置 -->
             <div class="avatar-section">
-                <img class="avatar-preview" id="avatarPreview" src="https://jdbendi.oss-cn-hangzhou.aliyuncs.com/Avatar/default_avatar.svg" alt="头像" onclick="openAvatarLightbox(this.src)">
+                <img class="avatar-preview" id="avatarPreview" src="https://jdbendi.oss-cn-hangzhou.aliyuncs.com/Avatar/default_avatar.svg" alt="头像" onclick="goToUserProfile(currentUser && currentUser.username)">
                 <div class="avatar-actions">
                     <input type="file" id="avatarInput" accept="image/*" style="display:none;">
                     <button type="button" class="avatar-btn avatar-btn-change" id="avatarChangeBtn" onclick="document.getElementById('avatarInput').click()">更换头像</button>
@@ -703,7 +703,7 @@
         </div>
     </div>
 
-    <!-- 头像放大灯箱 -->
+    <!-- 图片放大灯箱（用于帖子图片预览；头像点击改为进入个人主页） -->
     <div id="avatarLightbox">
         <button id="avatarLightboxClose" onclick="closeAvatarLightbox()">✕</button>
         <img id="avatarLightboxImg" alt="头像">
@@ -723,6 +723,12 @@
 
         function getMediaUrl(u) {
             return u || '';
+        }
+
+        // 点击头像进入个人主页
+        function goToUserProfile(username) {
+            if (!username) return;
+            location.href = '/user/' + encodeURIComponent(username);
         }
 
         async function prepareMediaForPreview(src) {
@@ -747,7 +753,7 @@
             catch (error) { alert(error.message || '视频无法播放'); }
         }
 
-        // 头像放大灯箱
+        // 图片放大灯箱（用于帖子图片预览；头像点击改为进入个人主页）
         let avatarLbHistoryPushed = false;
         function openAvatarLightbox(src) {
             if (!src) return;

@@ -35,7 +35,7 @@
         .conv-item.active { background: #f0f0ff; }
         .conv-avatar {
             width: 44px; height: 44px; border-radius: 50%;
-            object-fit: cover; flex-shrink: 0;
+            object-fit: cover; flex-shrink: 0; cursor: pointer;
         }
         .conv-info { flex: 1; min-width: 0; }
         .conv-name { font-size: 15px; font-weight: 600; color: #333; }
@@ -222,6 +222,11 @@
         function getMediaUrl(u) {
             return u || '';
         }
+        // 点击头像进入个人主页
+        function goToUserProfile(username) {
+            if (!username) return;
+            location.href = '/user/' + encodeURIComponent(username);
+        }
         function autoResize(el) {
             el.style.height = 'auto';
             el.style.height = Math.min(el.scrollHeight, 100) + 'px';
@@ -308,7 +313,7 @@
                 const unreadHtml = c.unread > 0 ? `<span class="conv-unread">${c.unread}</span>` : '';
                 return `
                 <div class="conv-item" onclick="openChat(${c.user_id},'${escapeHtml(c.username)}')">
-                    <img class="conv-avatar" src="${getMediaUrl(c.avatar_url)}" alt="头像">
+                    <img class="conv-avatar" src="${getMediaUrl(c.avatar_url)}" alt="头像" data-username="${escapeHtml(c.username)}" onclick="event.stopPropagation();goToUserProfile(this.dataset.username)">
                     <div class="conv-info">
                         <div class="conv-name">${escapeHtml(c.username)}</div>
                         <div class="conv-last">${lastMsg}</div>
@@ -383,7 +388,7 @@
                 const avatarSrc = escapeHtml(getMediaUrl(m.from_avatar_url));
                 return `
                 <div class="msg-row ${isMine ? 'mine' : 'theirs'}">
-                    <img class="msg-avatar" src="${avatarSrc}" alt="头像" onclick="openLightbox('${avatarSrc}')">
+                    <img class="msg-avatar" src="${avatarSrc}" alt="头像" data-username="${escapeHtml(m.from_username)}" onclick="goToUserProfile(this.dataset.username)">
                     <div>
                         <div class="msg-time">${formatTime(m.timestamp)}</div>
                         <div class="msg-bubble">${bubble}</div>
