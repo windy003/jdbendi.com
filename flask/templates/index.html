@@ -225,7 +225,6 @@
         <div style="text-align: center; margin-top: 8px; color: #667eea; font-size: 15px; font-weight: 600;">
             📱 安卓应用下载(版本:2026/4/3-1,请尽量使用最新版本,基本上网页版本也够用)<a href="{{ url_for('static', filename='app-release.apk') }}" download style="color: #667eea; text-decoration: underline; margin-left: 6px;">点我下载</a>
         </div>
-        <div style="text-align: center; margin-top: 8px;color: #667eea; font-size: 15px; font-weight: 600;">本网站在加载首页时,会自动弹窗提示私信状态信息,请放心使用!</div>
     </header>
 
     <div class="container">
@@ -392,7 +391,6 @@
                     updateNavBar(true, r.user);
                     await fetchUnreadCount();
                     await fetchDmUnreadCount();
-                    checkDmMessageStatus();
                 } else {
                     currentUser = null;
                     updateNavBar(false, null);
@@ -400,16 +398,17 @@
             } catch(e) { updateNavBar(false, null); }
         }
 
-        async function checkMessageStatus() {
-            await fetchUnreadCount();
-            await fetchDmUnreadCount();
-            alert(`未读消息 ${unreadCount + dmUnreadCount} 条`);
+        // 每次进入/返回主页时刷新私信未读数，红点显示在顶部“私信”按钮右上角
+        function refreshDmUnread() {
+            if (currentUser) fetchDmUnreadCount();
         }
-
-        // 每次打开主页时自动弹窗提示私信消息状态
-        function checkDmMessageStatus() {
-            alert(dmUnreadCount > 0 ? `您有 ${dmUnreadCount} 条未读私信` : '暂无未读私信');
-        }
+        window.addEventListener('pageshow', e => {
+            // 浏览器后退可能直接使用缓存页面，此时不会重新执行初始化，需要主动刷新
+            if (e.persisted) refreshDmUnread();
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') refreshDmUnread();
+        });
 
         async function fetchUnreadCount() {
             try {
@@ -458,8 +457,7 @@
                 nav.innerHTML = `
                     <span style="color:#667eea;font-weight:600;">欢迎, <img class="nav-avatar" src="${getMediaUrl(user.avatar_url)}" alt="头像" onclick="goToUserProfile(currentUser.username)">${escapeHtml(user.username)}</span> |
                     ${centerLink} |
-                    <a href="/dm" style="color:#764ba2;text-decoration:none;margin:0 10px;font-weight:600;position:relative;" id="dmNavLink">💬私信<span id="dmBadge" style="position:absolute;top:-8px;right:-12px;background:#f44336;color:white;border-radius:10px;min-width:16px;height:16px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px;"></span></a> |
-                    <a href="#" onclick="checkMessageStatus();return false;" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">获取消息状态</a> |
+                    <a href="/dm" style="color:#764ba2;text-decoration:none;margin:0 10px;font-weight:600;position:relative;" id="dmNavLink">💬私信<span id="dmBadge" title="未读私信" style="position:absolute;top:-7px;right:-10px;background:#f44336;color:white;border:1.5px solid #fff;border-radius:10px;min-width:16px;height:16px;font-size:10px;font-weight:700;line-height:1;display:none;align-items:center;justify-content:center;padding:0 3px;box-sizing:border-box;"></span></a> |
                     <a href="#" onclick="logout();return false;" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">退出登录</a>
                 `;
             } else {
