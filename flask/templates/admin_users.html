@@ -198,6 +198,92 @@
             content: ' 🔍';
         }
 
+        /* 24 小时独立 IP 的地区切换按钮 */
+        .stat-scope-switch {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-top: 8px;
+        }
+
+        .stat-scope-btn {
+            background: rgba(255, 255, 255, 0.18);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 10px;
+            padding: 2px 4px;
+            font-size: 10px;
+            line-height: 1.5;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .stat-scope-btn:hover {
+            background: rgba(255, 255, 255, 0.32);
+        }
+
+        .stat-scope-btn.active {
+            background: #fff;
+            color: #5a4fcf;
+            border-color: #fff;
+            font-weight: 700;
+        }
+
+        .modal-scope-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 12px 20px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .modal-scope-btn {
+            padding: 6px 12px;
+            border: 1px solid #d4d7f5;
+            background: #f5f6ff;
+            color: #444;
+            border-radius: 16px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .modal-scope-btn:hover {
+            background: #e8eaf6;
+        }
+
+        .modal-scope-btn.active {
+            background: #667eea;
+            border-color: #667eea;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .scope-count {
+            display: inline-block;
+            min-width: 18px;
+            padding: 0 5px;
+            margin-left: 3px;
+            border-radius: 9px;
+            background: rgba(0, 0, 0, 0.08);
+            font-size: 11px;
+            text-align: center;
+        }
+
+        .modal-scope-btn.active .scope-count {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .visitor-region {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
         .modal-overlay {
             display: none;
             position: fixed;
@@ -357,8 +443,13 @@
                     <div class="stat-label">今日访问量</div>
                 </div>
                 <div class="stat-card clickable" onclick="openVisitorsModal()">
-                    <div class="stat-value">-</div>
-                    <div class="stat-label">24小时独立访客</div>
+                    <div class="stat-value" id="uniqueVisitorsTodayValue">-</div>
+                    <div class="stat-label">24小时独立IP</div>
+                    <div class="stat-scope-switch" onclick="event.stopPropagation()">
+                        <button type="button" class="stat-scope-btn" data-scope="hangzhou" onclick="setVisitorScope('hangzhou')">杭州市</button>
+                        <button type="button" class="stat-scope-btn" data-scope="zhejiang" onclick="setVisitorScope('zhejiang')">浙江省</button>
+                        <button type="button" class="stat-scope-btn active" data-scope="nationwide" onclick="setVisitorScope('nationwide')">全国</button>
+                    </div>
                 </div>
                 <div class="stat-card clickable" onclick="openAllVisitorsModal()">
                     <div class="stat-value">-</div>
@@ -376,8 +467,19 @@
     <div class="modal-overlay" id="visitorsModal" onclick="if(event.target===this) closeVisitorsModal()">
         <div class="modal-box">
             <div class="modal-header">
-                <h3>🌐 24小时独立访客</h3>
+                <h3 id="visitorsModalTitle">🌐 24小时独立IP · 全国</h3>
                 <button class="modal-close" onclick="closeVisitorsModal()">✕</button>
+            </div>
+            <div class="modal-scope-bar">
+                <button type="button" class="modal-scope-btn" data-scope="hangzhou" onclick="setVisitorScope('hangzhou')">
+                    杭州市 <span class="scope-count" data-count-scope="hangzhou">0</span>
+                </button>
+                <button type="button" class="modal-scope-btn" data-scope="zhejiang" onclick="setVisitorScope('zhejiang')">
+                    浙江省 <span class="scope-count" data-count-scope="zhejiang">0</span>
+                </button>
+                <button type="button" class="modal-scope-btn active" data-scope="nationwide" onclick="setVisitorScope('nationwide')">
+                    全国 <span class="scope-count" data-count-scope="nationwide">0</span>
+                </button>
             </div>
             <div class="modal-body" id="visitorsList">加载中...</div>
         </div>
@@ -395,6 +497,10 @@
 
     <script>
         let currentUser = null;
+        // 24 小时独立 IP 的地区口径：默认全国
+        let visitorScope = 'nationwide';
+        let visitorCounts24h = { nationwide: 0, zhejiang: 0, hangzhou: 0 };
+        const VISITOR_SCOPE_NAMES = { nationwide: '全国', zhejiang: '浙江省', hangzhou: '杭州市' };
 
         // 检查登录和权限
         checkPermission();
@@ -426,6 +532,11 @@
 
                 if (result.success) {
                     const stats = result.data;
+                    visitorCounts24h = stats.visitor_counts_24h || {
+                        nationwide: stats.unique_visitors_today || 0,
+                        zhejiang: 0,
+                        hangzhou: 0
+                    };
                     document.getElementById('statsGrid').innerHTML = `
                         <div class="stat-card">
                             <div class="stat-value">${stats.total_users}</div>
@@ -456,14 +567,21 @@
                             <div class="stat-label">今日访问量</div>
                         </div>
                         <div class="stat-card clickable" onclick="openVisitorsModal()">
-                            <div class="stat-value">${stats.unique_visitors_today}</div>
-                            <div class="stat-label">24小时独立访客</div>
+                            <div class="stat-value" id="uniqueVisitorsTodayValue">${visitorCounts24h[visitorScope] ?? 0}</div>
+                            <div class="stat-label">24小时独立IP</div>
+                            <div class="stat-scope-switch" onclick="event.stopPropagation()">
+                                <button type="button" class="stat-scope-btn" data-scope="hangzhou" onclick="setVisitorScope('hangzhou')">杭州市</button>
+                                <button type="button" class="stat-scope-btn" data-scope="zhejiang" onclick="setVisitorScope('zhejiang')">浙江省</button>
+                                <button type="button" class="stat-scope-btn active" data-scope="nationwide" onclick="setVisitorScope('nationwide')">全国</button>
+                            </div>
                         </div>
                         <div class="stat-card clickable" onclick="openAllVisitorsModal()">
                             <div class="stat-value">${stats.total_unique_visitors}</div>
                             <div class="stat-label">累计独立访客</div>
                         </div>
                     `;
+                    applyVisitorScopeUI();
+                    renderVisitorScopeCounts();
                 }
             } catch (error) {
                 console.error('加载统计数据失败:', error);
@@ -531,9 +649,45 @@
             return div.innerHTML;
         }
 
+        // 更新卡片上的 24 小时独立 IP 数值
+        function updateVisitorCardValue() {
+            const valueEl = document.getElementById('uniqueVisitorsTodayValue');
+            if (valueEl) {
+                valueEl.textContent = visitorCounts24h[visitorScope] ?? 0;
+            }
+        }
+
+        // 同步所有地区按钮的选中态
+        function applyVisitorScopeUI() {
+            document.querySelectorAll('.stat-scope-btn, .modal-scope-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.scope === visitorScope);
+            });
+        }
+
+        // 同步弹窗地区按钮上的数量
+        function renderVisitorScopeCounts() {
+            document.querySelectorAll('[data-count-scope]').forEach(el => {
+                el.textContent = visitorCounts24h[el.dataset.countScope] ?? 0;
+            });
+        }
+
+        // 切换 杭州市 / 浙江省 / 全国
+        function setVisitorScope(scope) {
+            if (!VISITOR_SCOPE_NAMES[scope]) return;
+            visitorScope = scope;
+            applyVisitorScopeUI();
+            updateVisitorCardValue();
+            if (document.getElementById('visitorsModal').classList.contains('open')) {
+                loadVisitors();
+            }
+        }
+
         // 打开 24 小时独立访客弹窗
         function openVisitorsModal() {
             document.getElementById('visitorsModal').classList.add('open');
+            applyVisitorScopeUI();
+            renderVisitorScopeCounts();
+            updateVisitorCardValue();
             loadVisitors();
         }
 
@@ -543,9 +697,11 @@
 
         async function loadVisitors() {
             const listEl = document.getElementById('visitorsList');
+            const titleEl = document.getElementById('visitorsModalTitle');
+            titleEl.textContent = `🌐 24小时独立IP · ${VISITOR_SCOPE_NAMES[visitorScope]}`;
             listEl.innerHTML = '加载中...';
             try {
-                const response = await fetch('/api/admin/visitors/recent');
+                const response = await fetch(`/api/admin/visitors/recent?scope=${encodeURIComponent(visitorScope)}`);
                 const result = await response.json();
 
                 if (!result.success) {
@@ -553,21 +709,38 @@
                     return;
                 }
 
-                renderVisitors(result.data);
+                // 快速连续切换地区时，丢弃已过期的响应
+                if (result.scope && result.scope !== visitorScope) {
+                    return;
+                }
+
+                if (result.counts) {
+                    visitorCounts24h = result.counts;
+                    updateVisitorCardValue();
+                    renderVisitorScopeCounts();
+                }
+                renderVisitors(result.data, result.ip_region_available);
             } catch (error) {
                 listEl.innerHTML = '<div class="empty-state">加载失败，请检查网络连接</div>';
             }
         }
 
-        function renderVisitors(visitors) {
+        function renderVisitors(visitors, regionAvailable) {
             const listEl = document.getElementById('visitorsList');
+            const scopeName = VISITOR_SCOPE_NAMES[visitorScope];
+            const notice = regionAvailable === false
+                ? '<div class="empty-state" style="color:#c62828;padding:10px;">IP 归属地离线库未加载，暂时无法按地区筛选</div>'
+                : '';
 
             if (visitors.length === 0) {
-                listEl.innerHTML = '<div class="empty-state">最近 24 小时暂无访客</div>';
+                const emptyText = visitorScope === 'nationwide'
+                    ? '最近 24 小时暂无访客'
+                    : `最近 24 小时暂无${scopeName}访客`;
+                listEl.innerHTML = notice + `<div class="empty-state">${emptyText}</div>`;
                 return;
             }
 
-            listEl.innerHTML = visitors.map((v, index) => `
+            listEl.innerHTML = notice + visitors.map((v, index) => `
                 <div class="visitor-row">
                     <div class="visitor-info">
                         <div class="visitor-ip">${escapeHtml(v.ip)}</div>
@@ -577,8 +750,11 @@
                             ${v.username ? ' | 用户: ' + escapeHtml(v.username) : ''}
                         </div>
                     </div>
-                    <div id="geo-${index}">
-                        <button class="btn-geo" onclick="loadIpGeo('${escapeHtml(v.ip)}', ${index}, this)">查看归属地</button>
+                    <div class="visitor-region">
+                        <span class="visitor-geo">${escapeHtml(v.region_text || '归属地未知')}</span>
+                        <div id="geo-${index}">
+                            <button class="btn-geo" onclick="loadIpGeo('${escapeHtml(v.ip)}', ${index}, this)">查看归属地</button>
+                        </div>
                     </div>
                 </div>
             `).join('');

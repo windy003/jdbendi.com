@@ -601,6 +601,138 @@ def get_client_ip():
         return ''
     return ip
 
+# ========== IP 归属地（ip2region 离线库） ==========
+# 用官方 Python 绑定 + data/ 下的 xdb 数据文件在本地查询归属地，
+# 仅用于把 24 小时独立 IP 拆分成 杭州市 / 浙江省 / 全国 三个口径。
+# 后台“查看归属地”按钮仍然走 /api/admin/ip-geo（ip-api.com），两条路径互不影响。
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+IP2REGION_DATA_DIR = os.path.join(APP_DIR, 'data')
+IP2REGION_DB_FILES = {
+    4: os.path.join(IP2REGION_DATA_DIR, 'ip2region_v4.xdb'),
+    6: os.path.join(IP2REGION_DATA_DIR, 'ip2region_v6.xdb'),
+}
+
+_ip2region_searchers = {}
+_ip2region_loaded = False
+_ip2region_lock = threading.Lock()
+
+# 24 小时独立 IP 的三个统计口径（顺序仅用于后端校验，前端按需排列）
+VISITOR_SCOPES = ('nationwide', 'zhejiang', 'hangzhou')
+
+def _get_ip2region_searchers():
+    """懒加载 ip2region xdb（整库读入内存，查询无磁盘 IO，多线程安全）。"""
+    global _ip2region_loaded
+    if _ip2region_loaded:
+        return _ip2region_searchers
+    with _ip2region_lock:
+        if not _ip2region_loaded:
+            try:
+                import ip2region.util as ip2r_util
+                from ip2region.searcher import new_with_buffer
+            except ImportError as exc:
+                app.logger.warning('ip2region 绑定未找到，按地区统计将不可用: %s', exc)
+                _ip2region_loaded = True
+                return _ip2region_searchers
+
+            for version, db_path in IP2REGION_DB_FILES.items():
+                if not os.path.isfile(db_path):
+                    app.logger.warning('ip2region 数据文件不存在: %s', db_path)
+                    continue
+                try:
+                    content = ip2r_util.load_content_from_file(db_path)
+                    ip_version = ip2r_util.IPv4 if version == 4 else ip2r_util.IPv6
+                    _ip2region_searchers[version] = new_with_buffer(ip_version, content)
+                except Exception as exc:
+                    app.logger.warning('加载 ip2region 数据文件失败 %s: %s', db_path, exc)
+            _ip2region_loaded = True
+    return _ip2region_searchers
+
+def ip2region_available():
+    """ip2region 是否至少加载成功一个数据文件。"""
+    return bool(_get_ip2region_searchers())
+
+def lookup_ip_region(ip):
+    """查询 IP 归属地，返回 dict；内网/非法/IPv6 库缺失/查不到时返回 None。
+
+    xdb 记录格式：
+      新版 v4/v6：国家|省份|城市|ISP|国家代码
+      旧版 v2   ：国家|区域|省份|城市|ISP（中国的“区域”为 0）
+    """
+    if not ip:
+        return None
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+    if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved:
+        return None
+
+    searcher = _get_ip2region_searchers().get(ip_obj.version)
+    if searcher is None:
+        return None
+    try:
+        raw = searcher.search(ip)
+    except Exception:
+        return None
+    if not raw:
+        return None
+
+    parts = raw.split('|')
+    if len(parts) < 3:
+        return None
+    if parts[1] == '0' and len(parts) >= 5:
+        # 旧版 5 段格式
+        province, city, isp = parts[2], parts[3], parts[4]
+    else:
+        province = parts[1]
+        city = parts[2] if len(parts) > 2 else ''
+        isp = parts[3] if len(parts) > 3 else ''
+    return {
+        'country': parts[0],
+        'province': province,
+        'city': city,
+        'isp': isp,
+        'raw': raw,
+    }
+
+def ip_region_matches_scope(region, scope):
+    """判断归属地是否属于指定统计口径。全国不做地区限制。"""
+    if scope == 'nationwide':
+        return True
+    if not region:
+        return False
+    if scope == 'zhejiang':
+        return region['province'] == '浙江省'
+    if scope == 'hangzhou':
+        return region['province'] == '浙江省' and region['city'] == '杭州市'
+    return False
+
+def count_visitors_by_scope(ips):
+    """按 全国 / 浙江省 / 杭州市 统计独立 IP 数。"""
+    counts = {scope: 0 for scope in VISITOR_SCOPES}
+    for ip in ips:
+        region = lookup_ip_region(ip)
+        counts['nationwide'] += 1
+        if ip_region_matches_scope(region, 'zhejiang'):
+            counts['zhejiang'] += 1
+        if ip_region_matches_scope(region, 'hangzhou'):
+            counts['hangzhou'] += 1
+    return counts
+
+def format_ip_region(region):
+    """把归属地拼成便于展示的文本，如“中国 · 浙江省 · 杭州市 | 电信”。"""
+    if not region:
+        return ''
+    labels = []
+    for value in (region['country'], region['province'], region['city']):
+        if not value or value == '0' or (labels and value == labels[-1]):
+            continue
+        labels.append(value)
+    text = ' · '.join(labels)
+    if region['isp'] and region['isp'] != '0':
+        text = (text + ' | ' if text else '') + region['isp']
+    return text
+
 @app.before_request
 def track_visit():
     if request.method != 'GET' or request.path.startswith(('/api/', '/static/', '/admin')):
@@ -1568,6 +1700,14 @@ def get_stats():
     cursor.execute('SELECT COUNT(DISTINCT ip) as count FROM visits WHERE timestamp > ?', (today_timestamp,))
     unique_visitors_today = cursor.fetchone()['count']
 
+    # 24 小时独立 IP 按地区拆分（ip2region 本地库）
+    cursor.execute(
+        "SELECT DISTINCT ip FROM visits WHERE timestamp > ? AND ip IS NOT NULL AND ip != ''",
+        (today_timestamp,)
+    )
+    today_ips = [row['ip'] for row in cursor.fetchall()]
+    visitor_counts_24h = count_visitors_by_scope(today_ips)
+
     conn.close()
 
     stats = {
@@ -1579,19 +1719,27 @@ def get_stats():
         'total_visits': total_visits,
         'total_unique_visitors': total_unique_visitors,
         'visits_today': visits_today,
-        'unique_visitors_today': unique_visitors_today
+        'unique_visitors_today': unique_visitors_today,
+        'visitor_counts_24h': visitor_counts_24h,
+        'ip_region_available': ip2region_available()
     }
 
     return jsonify({'success': True, 'data': stats})
 
 # API：获取最近 24 小时独立访客列表（仅管理员）
+# 支持 scope=nationwide|zhejiang|hangzhou，按 ip2region 归属地把 IP 分成 全国/浙江省/杭州市
 @app.route('/api/admin/visitors/recent', methods=['GET'])
 @admin_required
 def get_recent_visitors():
+    scope = request.args.get('scope', 'nationwide')
+    if scope not in VISITOR_SCOPES:
+        scope = 'nationwide'
+
     conn = get_db()
     cursor = conn.cursor()
 
     since = int(time.time() * 1000) - 24 * 60 * 60 * 1000
+    # 不在 SQL 里 LIMIT：先按地区筛选，再对结果截取 500 条，避免筛掉目标地区的访客
     cursor.execute('''
         SELECT
             v.ip,
@@ -1608,13 +1756,36 @@ def get_recent_visitors():
         WHERE v.timestamp > ? AND v.ip IS NOT NULL AND v.ip != ''
         GROUP BY v.ip
         ORDER BY last_visit DESC
-        LIMIT 500
     ''', (since, since))
-
-    visitors = [dict(row) for row in cursor.fetchall()]
+    rows = [dict(row) for row in cursor.fetchall()]
     conn.close()
 
-    return jsonify({'success': True, 'data': visitors})
+    counts = {name: 0 for name in VISITOR_SCOPES}
+    matched = []
+    for row in rows:
+        region = lookup_ip_region(row['ip'])
+        row['region_text'] = format_ip_region(region)
+        counts['nationwide'] += 1
+        in_zhejiang = ip_region_matches_scope(region, 'zhejiang')
+        in_hangzhou = ip_region_matches_scope(region, 'hangzhou')
+        if in_zhejiang:
+            counts['zhejiang'] += 1
+        if in_hangzhou:
+            counts['hangzhou'] += 1
+        if (scope == 'nationwide'
+                or (scope == 'zhejiang' and in_zhejiang)
+                or (scope == 'hangzhou' and in_hangzhou)):
+            matched.append(row)
+
+    visitors = matched[:500]
+
+    return jsonify({
+        'success': True,
+        'scope': scope,
+        'data': visitors,
+        'counts': counts,
+        'ip_region_available': ip2region_available()
+    })
 
 # API：获取有记录以来的全部独立访客列表（仅管理员）
 @app.route('/api/admin/visitors/all', methods=['GET'])

@@ -3,3 +3,4 @@ androidApp/app/build/
 androidApp/.gradle/
 androidApp/.idea/
 flask/.env
+flask/data/
