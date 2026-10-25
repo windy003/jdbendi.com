@@ -603,7 +603,8 @@ def get_client_ip():
 
 # ========== IP 归属地（ip2region 离线库） ==========
 # 用官方 Python 绑定 + data/ 下的 xdb 数据文件在本地查询归属地，
-# 仅用于把 24 小时独立 IP 拆分成 杭州市 / 浙江省 / 全国 三个口径。
+# 仅用于把 24 小时独立 IP 拆分成 杭州市 / 浙江省 / 全国 三个口径
+# （全国只统计中国境内 IP，境外 IP 不计入）。
 # 后台“查看归属地”按钮仍然走 /api/admin/ip-geo（ip-api.com），两条路径互不影响。
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 IP2REGION_DATA_DIR = os.path.join(APP_DIR, 'data')
@@ -696,15 +697,21 @@ def lookup_ip_region(ip):
     }
 
 def ip_region_matches_scope(region, scope):
-    """判断归属地是否属于指定统计口径。全国不做地区限制。"""
+    """判断归属地是否属于指定统计口径。
+
+    全国只统计中国境内 IP（ip2region 中港澳台的国家字段同样是“中国”），
+    境外 IP、内网/非法 IP、查不到归属地的 IP 都不计入。
+    """
     if scope == 'nationwide':
-        return True
+        return bool(region) and region['country'] == '中国'
     if not region:
         return False
     if scope == 'zhejiang':
-        return region['province'] == '浙江省'
+        return region['country'] == '中国' and region['province'] == '浙江省'
     if scope == 'hangzhou':
-        return region['province'] == '浙江省' and region['city'] == '杭州市'
+        return (region['country'] == '中国'
+                and region['province'] == '浙江省'
+                and region['city'] == '杭州市')
     return False
 
 def count_visitors_by_scope(ips):
@@ -712,7 +719,8 @@ def count_visitors_by_scope(ips):
     counts = {scope: 0 for scope in VISITOR_SCOPES}
     for ip in ips:
         region = lookup_ip_region(ip)
-        counts['nationwide'] += 1
+        if ip_region_matches_scope(region, 'nationwide'):
+            counts['nationwide'] += 1
         if ip_region_matches_scope(region, 'zhejiang'):
             counts['zhejiang'] += 1
         if ip_region_matches_scope(region, 'hangzhou'):
@@ -1727,7 +1735,8 @@ def get_stats():
     return jsonify({'success': True, 'data': stats})
 
 # API：获取最近 24 小时独立访客列表（仅管理员）
-# 支持 scope=nationwide|zhejiang|hangzhou，按 ip2region 归属地把 IP 分成 全国/浙江省/杭州市
+# 支持 scope=nationwide|zhejiang|hangzhou，按 ip2region 归属地把 IP 分成
+# 全国（仅中国境内）/ 浙江省 / 杭州市，境外及无法识别的 IP 不计入
 @app.route('/api/admin/visitors/recent', methods=['GET'])
 @admin_required
 def get_recent_visitors():
@@ -1765,14 +1774,16 @@ def get_recent_visitors():
     for row in rows:
         region = lookup_ip_region(row['ip'])
         row['region_text'] = format_ip_region(region)
-        counts['nationwide'] += 1
+        in_nationwide = ip_region_matches_scope(region, 'nationwide')
         in_zhejiang = ip_region_matches_scope(region, 'zhejiang')
         in_hangzhou = ip_region_matches_scope(region, 'hangzhou')
+        if in_nationwide:
+            counts['nationwide'] += 1
         if in_zhejiang:
             counts['zhejiang'] += 1
         if in_hangzhou:
             counts['hangzhou'] += 1
-        if (scope == 'nationwide'
+        if ((scope == 'nationwide' and in_nationwide)
                 or (scope == 'zhejiang' and in_zhejiang)
                 or (scope == 'hangzhou' and in_hangzhou)):
             matched.append(row)

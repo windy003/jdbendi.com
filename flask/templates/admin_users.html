@@ -448,7 +448,7 @@
                     <div class="stat-scope-switch" onclick="event.stopPropagation()">
                         <button type="button" class="stat-scope-btn" data-scope="hangzhou" onclick="setVisitorScope('hangzhou')">杭州市</button>
                         <button type="button" class="stat-scope-btn" data-scope="zhejiang" onclick="setVisitorScope('zhejiang')">浙江省</button>
-                        <button type="button" class="stat-scope-btn active" data-scope="nationwide" onclick="setVisitorScope('nationwide')">全国</button>
+                        <button type="button" class="stat-scope-btn active" data-scope="nationwide" title="仅统计中国境内 IP" onclick="setVisitorScope('nationwide')">全国</button>
                     </div>
                 </div>
                 <div class="stat-card clickable" onclick="openAllVisitorsModal()">
@@ -477,7 +477,7 @@
                 <button type="button" class="modal-scope-btn" data-scope="zhejiang" onclick="setVisitorScope('zhejiang')">
                     浙江省 <span class="scope-count" data-count-scope="zhejiang">0</span>
                 </button>
-                <button type="button" class="modal-scope-btn active" data-scope="nationwide" onclick="setVisitorScope('nationwide')">
+                <button type="button" class="modal-scope-btn active" data-scope="nationwide" title="仅统计中国境内 IP" onclick="setVisitorScope('nationwide')">
                     全国 <span class="scope-count" data-count-scope="nationwide">0</span>
                 </button>
             </div>
@@ -532,8 +532,9 @@
 
                 if (result.success) {
                     const stats = result.data;
+                    // 全国口径只算中国境内 IP，不再回退到“全部 IP”的旧字段
                     visitorCounts24h = stats.visitor_counts_24h || {
-                        nationwide: stats.unique_visitors_today || 0,
+                        nationwide: 0,
                         zhejiang: 0,
                         hangzhou: 0
                     };
@@ -572,7 +573,7 @@
                             <div class="stat-scope-switch" onclick="event.stopPropagation()">
                                 <button type="button" class="stat-scope-btn" data-scope="hangzhou" onclick="setVisitorScope('hangzhou')">杭州市</button>
                                 <button type="button" class="stat-scope-btn" data-scope="zhejiang" onclick="setVisitorScope('zhejiang')">浙江省</button>
-                                <button type="button" class="stat-scope-btn active" data-scope="nationwide" onclick="setVisitorScope('nationwide')">全国</button>
+                                <button type="button" class="stat-scope-btn active" data-scope="nationwide" title="仅统计中国境内 IP" onclick="setVisitorScope('nationwide')">全国</button>
                             </div>
                         </div>
                         <div class="stat-card clickable" onclick="openAllVisitorsModal()">
@@ -734,7 +735,7 @@
 
             if (visitors.length === 0) {
                 const emptyText = visitorScope === 'nationwide'
-                    ? '最近 24 小时暂无访客'
+                    ? '最近 24 小时暂无境内访客'
                     : `最近 24 小时暂无${scopeName}访客`;
                 listEl.innerHTML = notice + `<div class="empty-state">${emptyText}</div>`;
                 return;
