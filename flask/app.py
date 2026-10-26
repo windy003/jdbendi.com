@@ -603,8 +603,8 @@ def get_client_ip():
 
 # ========== IP 归属地（ip2region 离线库） ==========
 # 用官方 Python 绑定 + data/ 下的 xdb 数据文件在本地查询归属地，
-# 仅用于把 24 小时独立 IP 拆分成 杭州市 / 浙江省 / 全国 三个口径
-# （全国只统计中国境内 IP，境外 IP 不计入）。
+# 仅用于把 24 小时独立 IP 拆分成 杭州市 / 浙江省 / 全国 / 全球 四个口径
+# （全国只统计中国境内 IP，全球统计所有独立 IP，包含境外及无法识别归属地的 IP）。
 # 后台“查看归属地”按钮仍然走 /api/admin/ip-geo（ip-api.com），两条路径互不影响。
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 IP2REGION_DATA_DIR = os.path.join(APP_DIR, 'data')
@@ -617,8 +617,8 @@ _ip2region_searchers = {}
 _ip2region_loaded = False
 _ip2region_lock = threading.Lock()
 
-# 24 小时独立 IP 的三个统计口径（顺序仅用于后端校验，前端按需排列）
-VISITOR_SCOPES = ('nationwide', 'zhejiang', 'hangzhou')
+# 24 小时独立 IP 的四个统计口径（顺序仅用于后端校验，前端按需排列）
+VISITOR_SCOPES = ('global', 'nationwide', 'zhejiang', 'hangzhou')
 
 def _get_ip2region_searchers():
     """懒加载 ip2region xdb（整库读入内存，查询无磁盘 IO，多线程安全）。"""
@@ -699,9 +699,12 @@ def lookup_ip_region(ip):
 def ip_region_matches_scope(region, scope):
     """判断归属地是否属于指定统计口径。
 
-    全国只统计中国境内 IP（ip2region 中港澳台的国家字段同样是“中国”），
-    境外 IP、内网/非法 IP、查不到归属地的 IP 都不计入。
+    全球统计所有 IP，不依赖归属地；全国只统计中国境内 IP
+    （ip2region 中港澳台的国家字段同样是“中国”），境外 IP、内网/非法 IP、
+    查不到归属地的 IP 都不计入。
     """
+    if scope == 'global':
+        return True
     if scope == 'nationwide':
         return bool(region) and region['country'] == '中国'
     if not region:
@@ -715,10 +718,12 @@ def ip_region_matches_scope(region, scope):
     return False
 
 def count_visitors_by_scope(ips):
-    """按 全国 / 浙江省 / 杭州市 统计独立 IP 数。"""
+    """按 全球 / 全国 / 浙江省 / 杭州市 统计独立 IP 数。"""
     counts = {scope: 0 for scope in VISITOR_SCOPES}
     for ip in ips:
         region = lookup_ip_region(ip)
+        if ip_region_matches_scope(region, 'global'):
+            counts['global'] += 1
         if ip_region_matches_scope(region, 'nationwide'):
             counts['nationwide'] += 1
         if ip_region_matches_scope(region, 'zhejiang'):
@@ -1735,8 +1740,9 @@ def get_stats():
     return jsonify({'success': True, 'data': stats})
 
 # API：获取最近 24 小时独立访客列表（仅管理员）
-# 支持 scope=nationwide|zhejiang|hangzhou，按 ip2region 归属地把 IP 分成
-# 全国（仅中国境内）/ 浙江省 / 杭州市，境外及无法识别的 IP 不计入
+# 支持 scope=global|nationwide|zhejiang|hangzhou，按 ip2region 归属地把 IP 分成
+# 全球（全部 IP）/ 全国（仅中国境内）/ 浙江省 / 杭州市，境外及无法识别的 IP
+# 只在全球口径中统计
 @app.route('/api/admin/visitors/recent', methods=['GET'])
 @admin_required
 def get_recent_visitors():
@@ -1774,18 +1780,11 @@ def get_recent_visitors():
     for row in rows:
         region = lookup_ip_region(row['ip'])
         row['region_text'] = format_ip_region(region)
-        in_nationwide = ip_region_matches_scope(region, 'nationwide')
-        in_zhejiang = ip_region_matches_scope(region, 'zhejiang')
-        in_hangzhou = ip_region_matches_scope(region, 'hangzhou')
-        if in_nationwide:
-            counts['nationwide'] += 1
-        if in_zhejiang:
-            counts['zhejiang'] += 1
-        if in_hangzhou:
-            counts['hangzhou'] += 1
-        if ((scope == 'nationwide' and in_nationwide)
-                or (scope == 'zhejiang' and in_zhejiang)
-                or (scope == 'hangzhou' and in_hangzhou)):
+        in_scope = {name: ip_region_matches_scope(region, name) for name in VISITOR_SCOPES}
+        for name, is_match in in_scope.items():
+            if is_match:
+                counts[name] += 1
+        if in_scope[scope]:
             matched.append(row)
 
     visitors = matched[:500]

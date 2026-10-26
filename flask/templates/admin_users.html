@@ -449,6 +449,7 @@
                         <button type="button" class="stat-scope-btn" data-scope="hangzhou" onclick="setVisitorScope('hangzhou')">杭州市</button>
                         <button type="button" class="stat-scope-btn" data-scope="zhejiang" onclick="setVisitorScope('zhejiang')">浙江省</button>
                         <button type="button" class="stat-scope-btn active" data-scope="nationwide" title="仅统计中国境内 IP" onclick="setVisitorScope('nationwide')">全国</button>
+                        <button type="button" class="stat-scope-btn" data-scope="global" title="统计全部 IP，包含境外" onclick="setVisitorScope('global')">全球</button>
                     </div>
                 </div>
                 <div class="stat-card clickable" onclick="openAllVisitorsModal()">
@@ -480,6 +481,9 @@
                 <button type="button" class="modal-scope-btn active" data-scope="nationwide" title="仅统计中国境内 IP" onclick="setVisitorScope('nationwide')">
                     全国 <span class="scope-count" data-count-scope="nationwide">0</span>
                 </button>
+                <button type="button" class="modal-scope-btn" data-scope="global" title="统计全部 IP，包含境外" onclick="setVisitorScope('global')">
+                    全球 <span class="scope-count" data-count-scope="global">0</span>
+                </button>
             </div>
             <div class="modal-body" id="visitorsList">加载中...</div>
         </div>
@@ -499,8 +503,8 @@
         let currentUser = null;
         // 24 小时独立 IP 的地区口径：默认全国
         let visitorScope = 'nationwide';
-        let visitorCounts24h = { nationwide: 0, zhejiang: 0, hangzhou: 0 };
-        const VISITOR_SCOPE_NAMES = { nationwide: '全国', zhejiang: '浙江省', hangzhou: '杭州市' };
+        let visitorCounts24h = { global: 0, nationwide: 0, zhejiang: 0, hangzhou: 0 };
+        const VISITOR_SCOPE_NAMES = { global: '全球', nationwide: '全国', zhejiang: '浙江省', hangzhou: '杭州市' };
 
         // 检查登录和权限
         checkPermission();
@@ -534,6 +538,7 @@
                     const stats = result.data;
                     // 全国口径只算中国境内 IP，不再回退到“全部 IP”的旧字段
                     visitorCounts24h = stats.visitor_counts_24h || {
+                        global: 0,
                         nationwide: 0,
                         zhejiang: 0,
                         hangzhou: 0
@@ -574,6 +579,7 @@
                                 <button type="button" class="stat-scope-btn" data-scope="hangzhou" onclick="setVisitorScope('hangzhou')">杭州市</button>
                                 <button type="button" class="stat-scope-btn" data-scope="zhejiang" onclick="setVisitorScope('zhejiang')">浙江省</button>
                                 <button type="button" class="stat-scope-btn active" data-scope="nationwide" title="仅统计中国境内 IP" onclick="setVisitorScope('nationwide')">全国</button>
+                                <button type="button" class="stat-scope-btn" data-scope="global" title="统计全部 IP，包含境外" onclick="setVisitorScope('global')">全球</button>
                             </div>
                         </div>
                         <div class="stat-card clickable" onclick="openAllVisitorsModal()">
@@ -672,7 +678,7 @@
             });
         }
 
-        // 切换 杭州市 / 浙江省 / 全国
+        // 切换 杭州市 / 浙江省 / 全国 / 全球
         function setVisitorScope(scope) {
             if (!VISITOR_SCOPE_NAMES[scope]) return;
             visitorScope = scope;
@@ -729,14 +735,17 @@
         function renderVisitors(visitors, regionAvailable) {
             const listEl = document.getElementById('visitorsList');
             const scopeName = VISITOR_SCOPE_NAMES[visitorScope];
-            const notice = regionAvailable === false
+            // 全球口径不依赖归属地离线库，库未加载时仍可正常统计
+            const notice = regionAvailable === false && visitorScope !== 'global'
                 ? '<div class="empty-state" style="color:#c62828;padding:10px;">IP 归属地离线库未加载，暂时无法按地区筛选</div>'
                 : '';
 
             if (visitors.length === 0) {
-                const emptyText = visitorScope === 'nationwide'
-                    ? '最近 24 小时暂无境内访客'
-                    : `最近 24 小时暂无${scopeName}访客`;
+                const emptyText = visitorScope === 'global'
+                    ? '最近 24 小时暂无访客'
+                    : visitorScope === 'nationwide'
+                        ? '最近 24 小时暂无境内访客'
+                        : `最近 24 小时暂无${scopeName}访客`;
                 listEl.innerHTML = notice + `<div class="empty-state">${emptyText}</div>`;
                 return;
             }
