@@ -1291,6 +1291,8 @@ def reset_avatar():
 @login_required
 def create_post():
     data = request.get_json()
+    # 详细内容为选填：未传或为 null 时按空字符串存入（content 列为 NOT NULL）
+    content = data.get('content') or ''
 
     conn = get_db()
     cursor = conn.cursor()
@@ -1304,7 +1306,7 @@ def create_post():
     ''', (
         data.get('category'),
         data.get('title'),
-        data.get('content'),
+        content,
         data.get('contact'),
         images_json,
         videos_json,
@@ -1320,14 +1322,14 @@ def create_post():
 
     notify_admin(
         f"新帖子：{data.get('title') or '(无标题)'}",
-        f"分类：{data.get('category') or '-'}\n发布人：{session.get('username') or '-'}\n\n{(data.get('content') or '')[:200]}"
+        f"分类：{data.get('category') or '-'}\n发布人：{session.get('username') or '-'}\n\n{content[:200]}"
     )
 
     new_post = {
         'id': post_id,
         'category': data.get('category'),
         'title': data.get('title'),
-        'content': data.get('content'),
+        'content': content,
         'contact': data.get('contact'),
         'images': data.get('images', []),
         'videos': data.get('videos', []),
@@ -1344,6 +1346,8 @@ def create_post():
 @post_owner_or_admin
 def update_post(post_id):
     data = request.get_json()
+    # 详细内容为选填：未传或为 null 时按空字符串处理
+    content = data.get('content') or ''
 
     conn = get_db()
     cursor = conn.cursor()
@@ -1383,7 +1387,7 @@ def update_post(post_id):
     ''', (
         data.get('category'),
         data.get('title'),
-        data.get('content'),
+        content,
         data.get('contact'),
         images_json,
         videos_json,
@@ -1400,7 +1404,7 @@ def update_post(post_id):
         'id': post_id,
         'category': data.get('category'),
         'title': data.get('title'),
-        'content': data.get('content'),
+        'content': content,
         'contact': data.get('contact'),
         'images': new_images,
         'videos': new_videos,
