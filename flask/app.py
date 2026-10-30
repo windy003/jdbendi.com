@@ -762,6 +762,18 @@ def track_visit():
     conn.commit()
     conn.close()
 
+# API：回显本次请求的客户端 IP 与归属地（诊断用，供代理池脚本做 IP 对照）
+# 走的就是 get_client_ip()，所以这里返回的 IP 和 visits 表里记录的一定是同一个值；
+# 拿代理真实出口 IP 跟它对一对，就能确认 Caddy -> waitress -> Flask 这条链没把 IP 弄丢。
+# 路径以 /api/ 开头，track_visit 会跳过，不会污染访问统计。
+@app.route('/api/ip', methods=['GET'])
+def api_client_ip():
+    ip = get_client_ip()
+    return jsonify({
+        'ip': ip,
+        'region': format_ip_region(lookup_ip_region(ip)),
+    })
+
 # 路由：前台页面
 @app.route('/')
 def index():
