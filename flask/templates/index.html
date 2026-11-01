@@ -513,13 +513,24 @@
         }
 
         // 将文本中的网址转成可点击的超链接
+        // 支持 http(s):// 、www. 开头，以及不带协议的域名（如 ysan.win、zms-bydl.jdbendi.com）
+        const LINK_TLDS = 'com|cn|net|org|edu|gov|int|mil|info|biz|name|pro|mobi|asia|tel|travel|jobs|cat|coop|aero|museum|top|xyz|site|online|tech|store|shop|club|vip|win|work|life|live|world|news|blog|art|fun|space|website|link|love|group|ltd|inc|llc|company|agency|studio|design|media|network|email|social|cloud|app|dev|io|ai|co|me|cc|tv|fm|gg|la|ly|to|ws|us|uk|jp|kr|de|fr|ru|hk|tw|mo|sg|au|ca|in|it|nl|se|ch|es|eu|br|mx|ar|nz|za|wang|ren|xin|one|plus|today|video|games|money|market|school|web|zone|city|center|guru|wiki|ink|run|red|kim|pub|bio|eco|green|global|digital|tools|chat|support|team|tips|works|id';
+        const LINK_RE = new RegExp(
+            '(?:https?:\\/\\/|www\\.)[^\\s<>"\'\\u0080-\\uFFFF]+' +
+            '|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+(?:' + LINK_TLDS + ')(?![a-z0-9-])' +
+            '(?::\\d{1,5})?(?:\\/[^\\s<>"\'\\u0080-\\uFFFF]*)?',
+            'gi'
+        );
         function linkify(text) {
             const escaped = escapeHtml(text);
-            return escaped.replace(/(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi, (match) => {
+            return escaped.replace(LINK_RE, (match, offset, str) => {
+                // 邮箱地址里的域名不当作链接
+                const prev = offset > 0 ? str.charAt(offset - 1) : '';
+                if (/[a-z0-9_@]/i.test(prev)) return match;
                 let url = match, trailing = '';
-                const m = url.match(/[),.!?;:'"]+$/);
+                const m = url.match(/[.,!?;:'")\]}>]+$/);
                 if (m) { trailing = m[0]; url = url.slice(0, -trailing.length); }
-                const href = /^https?:\/\//i.test(url) ? url : 'http://' + url;
+                const href = /^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : 'http://' + url;
                 return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color:#667eea;word-break:break-all;">${url}</a>${trailing}`;
             });
         }
