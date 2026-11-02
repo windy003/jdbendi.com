@@ -1609,11 +1609,6 @@ def upload_image():
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'上传失败: {str(e)}'}), 500
 
-# 路由：微信收款码
-@app.route('/wechat_pay.png')
-def wechat_pay():
-    return send_from_directory('.', '微信收款码.png')
-
 # API：获取用户列表（仅管理员）
 @app.route('/api/admin/users', methods=['GET'])
 @admin_required
