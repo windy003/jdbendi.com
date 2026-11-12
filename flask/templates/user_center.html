@@ -519,7 +519,7 @@
             <div class="user-info" id="userInfo">加载中...</div>
             <div class="header-actions">
                 <a href="/" class="back-link">← 返回首页</a>
-                <a class="logout-link" onclick="logout()">退出登录</a>
+                <a class="logout-link" onclick="logout()">登出</a>
             </div>
         </header>
 
@@ -936,7 +936,7 @@
 
         // 退出登录
         async function logout() {
-            if (confirm('确定要退出登录吗？')) {
+            if (confirm('确定要登出吗？')) {
                 try {
                     if (sseSource) { sseSource.close(); sseSource = null; }
                     await fetch('/api/logout', { method: 'POST' });

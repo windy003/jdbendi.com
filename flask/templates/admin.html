@@ -622,7 +622,7 @@
                 <h1>🔧 站长管理面板</h1>
                 <div class="header-actions">
                     <a href="/" class="back-link">← 返回前台查看</a>
-                    <a class="logout-link" onclick="logout()">退出登录</a>
+                    <a class="logout-link" onclick="logout()">登出</a>
                 </div>
                 <div style="text-align: center; margin-top: 15px;">
                     <a href="/admin/users" style="color: #667eea; text-decoration: none; font-weight: 600;">👥 用户管理</a>
@@ -1249,7 +1249,7 @@
 
         // 退出登录
         async function logout() {
-            if (confirm('确定要退出登录吗？')) {
+            if (confirm('确定要登出吗？')) {
                 try {
                     await fetch('/api/logout', { method: 'POST' });
                     showLoginPage();

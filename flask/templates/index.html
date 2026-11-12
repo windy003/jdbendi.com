@@ -458,7 +458,7 @@
                     <span style="color:#667eea;font-weight:600;">欢迎, <img class="nav-avatar" src="${getMediaUrl(user.avatar_url)}" alt="头像" onclick="goToUserProfile(currentUser.username)">${escapeHtml(user.username)}</span> |
                     ${centerLink} |
                     <a href="/dm" style="color:#764ba2;text-decoration:none;margin:0 10px;font-weight:600;position:relative;" id="dmNavLink">💬私信<span id="dmBadge" title="未读私信" style="position:absolute;top:-7px;right:-10px;background:#f44336;color:white;border:1.5px solid #fff;border-radius:10px;min-width:16px;height:16px;font-size:10px;font-weight:700;line-height:1;display:none;align-items:center;justify-content:center;padding:0 3px;box-sizing:border-box;"></span></a> |
-                    <a href="#" onclick="logout();return false;" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">退出登录</a>
+                    <a href="#" onclick="logout();return false;" style="color:#667eea;text-decoration:none;margin:0 10px;font-weight:600;">登出</a>
                 `;
             } else {
                 nav.innerHTML = `
