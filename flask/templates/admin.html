@@ -1418,9 +1418,14 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    resetForm();
-                    loadPosts();
                     alert(isEditing ? '信息更新成功！' : '信息发布成功！');
+                    if (isEditing) {
+                        resetForm();
+                        loadPosts();
+                    } else {
+                        // 发布成功后跳转到首页
+                        window.location.href = '/';
+                    }
                 } else {
                     alert((isEditing ? '更新' : '发布') + '失败：' + result.message);
                 }
