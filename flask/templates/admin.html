@@ -1418,14 +1418,15 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    alert(isEditing ? '信息更新成功！' : '信息发布成功！');
-                    if (isEditing) {
-                        resetForm();
-                        loadPosts();
-                    } else {
-                        // 发布成功后跳转到首页
-                        window.location.href = '/';
-                    }
+                    // 不用 alert 挡住跳转：部分设备（如三星 Z TriFold 的三星浏览器/WebView）
+                    // 会拦截或排队 alert，导致后面的跳转代码一直不执行
+                    try {
+                        sessionStorage.setItem('flashMessage', isEditing ? '信息更新成功！' : '信息发布成功！');
+                    } catch (err) {}
+                    // 发布和编辑成功后都跳回首页，由首页显示成功提示
+                    window.location.replace('/');
+                    // 兜底：若 1 秒后仍未跳转，再强制跳转一次
+                    setTimeout(function () { window.location.assign('/'); }, 1000);
                 } else {
                     alert((isEditing ? '更新' : '发布') + '失败：' + result.message);
                 }

@@ -50,6 +50,17 @@ CORS(app, resources={
     }
 })
 
+
+# HTML 页面禁用缓存：避免手机浏览器 / App 内 WebView 缓存旧页面（旧脚本没有跳转逻辑），
+# 导致个别设备（如三星 Z TriFold）上发布、更新后不跳转的问题
+@app.after_request
+def disable_html_cache(response):
+    if response.mimetype == 'text/html':
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 # ========== 配置区域（从环境变量读取，保护敏感信息） ==========
 # 账号密码（使用哈希加密存储）
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME')
